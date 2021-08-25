@@ -1,0 +1,186 @@
+---
+title: "Tutorato 10"
+author: "Alberto De Benedittis"
+date: "16/5/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library("ggplot2")
+library("ggdendro")
+library("ape")
+```
+
+
+__EXERCISE 1__
+In Tutorato 9 you worked on the USArrests data set to experiment with PCA. Here, you will use the same data to explore the use of clustering.
+• Using hierarchical clustering with complete linkage and Euclidean distance, cluster the states and visualize the resulting dendrogram.
+• Cut the dendrogram at a height that results in three distinct clusters. Which states belong to which clusters? Summarize the number of elements of each cluster.
+• Using hierarchical clustering with complete linkage and Euclidean distance, cluster the states after scaling the variables to have unit variance.
+• What is the impact of variable scaling on the hierarchical clustering obtained? To answer this, you may proceed cutting the new dendrogram so to have three distinct clusters. Then, you can compare the cluster assignments with the previously cut dendrogram. Do you think the variables should be scaled before the inter-observation dissimilarities are computed?
+__A__
+Let's import the dataset. 
+```{r}
+ARREST <- USArrests
+```
+Now let's implement hierarchical clustering. The `dist()` function is used to compute the 50X50 inter-observation Euclidean distance matrix. 
+```{r}
+hc.complete <- hclust(dist(ARREST), method = 'complete')
+```
+We can now plot the dendograms obtained using the usual `plot()` function. The numbers at the bottom of the plot identify each observation. 
+```{r}
+plot(hc.complete, main='Complete Linkage', cex=.9)
+```
+Now we are asked to cut the tree the dendrogram at a height that results in three distinct clusters.
+```{r}
+cutted <-  cutree(hc.complete, 3)
+table(cutted)
+```
+Now we want to plot each state with a different color according to what we have just found after having cutted the tree. 
+```{r}
+# Cut the dendrogram into 3 clusters
+colors = c("firebrick", "navy", "springgreen4")
+plot(as.phylo(hc.complete), tip.color = colors[cutted],
+     label.offset = 1, cex = 0.7, main = 'Each State to each cluster ')
+#plot(as.phylo(hc.complete),type ='fan' ,tip.color = colors[cutted],label.offset = 1, cex = 0.7)
+```
+```{r}
+# How can I use the apply function to count the number of States for each cluster? 
+```
+Now we want to scale the dataframe and re-compute the hierarchical clustering.
+```{r}
+ARRESTSCL <- scale(ARREST)
+hc.complete.scl <- hclust(dist(ARRESTSCL), method = 'complete')
+plot(hc.complete.scl, main='Complete Linkage SCL', cex=.9)
+cutted.scl <-  cutree(hc.complete.scl, 3)
+plot(as.phylo(hc.complete.scl), tip.color = colors[cutted],
+     label.offset = 1, cex = 0.7, main = 'Each State to each cluster SCL')
+```
+As we can immediately see from the plot, there are differences. Indeed, we know that it is always a good practice scaling the data frame before doing any kind of computations. Especially for PCA and hierarchical clustering it is important to scale the data in order to avoid that variables with higher values overcome the others. 
+__EXERCISE 2__
+In this problem, you will generate simulated data, and then perform PCA and K-means clustering on the data.
+• Generate a simulated data set with 20 observations in each of three classes (i.e. 60 observations total), and 50 variables. Hint: rnorm(n, mean=0, sd=1) generates data by drawing a sample from a normal distribution, and runif(n, min=0, max=1) from a uniform distribution. The values for the parameters you see here are the default ones: make sure to add a mean shift to the observations in each class so that there are three distinct classes.
+• Checkpoint: perform PCA on the 60 observations and plot the first two principal component score vectors. Use a different color to indicate the observations in each of the three classes. If the three classes
+appear separated in this plot, then continue. If not, then modify the simulation so that there is greater separation between the three classes.
+1
+• Perform K-means clustering of the observations with K = 3. How well do the clusters that you obtained
+in K-means clustering compare to the true class labels?
+• Perform K-means clustering with K = 2. Describe your results.
+• Now perform K-means clustering with K = 4, and describe your results.
+• Now perform K-means clustering with K = 3 on the first two principal component score vectors, rather
+than on the raw data. That is, perform K-means clustering on the 60 × 2 matrix of which the first
+column is the first principal component score vector, and the second column is the second principal
+component score vector. Comment on the results.
+• Using the scale() function, perform K-means clustering with K = 3 on the data after scaling each
+variable to have unit variance. How do these results compare to those obtained on unscaled data?
+Explain
+
+Now we create our dataset according to the previously stated condition. To do so we start by creating a matrix.  
+```{r}
+#set.seed(99)
+set.seed(1)
+x <-  matrix(runif(60*50, min = 0, max = 1), ncol=50)
+x[1:20,] = x[1:20,] + 5 # Group 1
+x[21:40,] = x[21:40,] - 6 # Group 2
+x[41:60,] = x[41:60,] + 0 # Group 3
+
+x <-  as.data.frame(x)
+```
+Now we are asked to perform a PCA on the dataset and to plot/show the first two components
+```{r}
+pr.out <- prcomp(x, scale = T)
+summary(pr.out)
+```
+```{r}
+biplot(pr.out, scale = 0 )
+```
+```{r}
+pr.var = pr.out$sdev^2
+pr.var
+pve <-  pr.var/(sum(pr.var))
+plot(pve, xlab = 'Principal Component', ylab='Proportion of variance explained', ylim = c(0,1), type = 'b', main = 'Percentage of variance explained')
+```
+```{r}
+labels <-  factor(c(rep('Group 1', 20), rep('Group 2', 20), rep('Group 3', 20)))
+labels
+
+plot(pr.out$x, col = ifelse(labels == 'Group 1', 'red',ifelse(labels == 'Group 2', 'blue', 'green' )))
+```
+Now we want to perform the k-means with 2,3 and 4 classes and we will compare the results.
+```{r}
+km2 <-  kmeans(x, 2, nstart = 20)
+km2
+```
+```{r}
+# TO SHOW THE PLOT WE NEED TO PERFORM A PCA SINCE WE HAVE TOO MANY VARIABLES
+plot(pr.out$x, col = (km2$cluster+1), main = 'Clustering Results wiht K = 2' )
+```
+
+```{r}
+km3 <-  kmeans(x,3, nstart = 20)
+km3
+```
+```{r}
+plot(pr.out$x, col = (km3$cluster+1), main = 'Clustering Results wiht K = 3' )
+```
+
+
+```{r}
+km4 <-  kmeans(x,4,nstart = 20)
+km4
+
+```
+```{r}
+plot(pr.out$x, col = (km4$cluster+1), main = 'Clustering Results wiht K = 4' )
+```
+As we expected the best clustering is the one with k = 3 and so with three clusters.
+It is easy to see how the clustering with k = 3 overcomes the one with k = 2: the Within cluster sum of squares by cluster is much higher with k=3. 
+More interestingly, is to compare the clustering with k = 3 and k = 4. 
+We notice that there is a (really) small improvement with k = 4 however, we also notice that the fourth cluster has only one observation, which refers to an observation of the class 2 which looks as an outlier in the plot with k = 3. To conclude, we tend to prefer the model with k = 3 because it is pointless having a cluster with only one observation.    
+
+Now we are asked to compute the kmeans only on the first two principal components.
+```{r}
+km3PC <- kmeans(pr.out$x[,1:2], 3, nstart = 20)
+km3PC
+```
+```{r}
+plot(pr.out$x, col = (km3PC$cluster+1), main = 'Clustering Results wiht K = 3 and considering just the first two components' )
+```
+It look's that we have obtained the same results as before __to be confirmed__.
+To conclude the exercise 2 we have to perform the k-means on a scaled version of our data set considering k = 3
+```{r}
+km3SCL <-  kmeans(scale(x), 3, nstart = 20)
+km3SCL
+```
+```{r}
+plot(pr.out$x, col = (km3SCL$cluster+1), main = 'Clustering Results wiht K = 3 and x scaled' )
+```
+Once again, we do not spot any significant difference. We probably do not spot any difference because we have built the data frame creating three different classes. So, scaling the data set or considering just the first two components does not affect significantly our analysis. The absence of differences among the scaled version and the normal one can be also explained by the fact that all our observation were created in a manner that they had mean 0, standard deviation 1 and they were also equally distributed. 
+__Exercise 3__
+This exercise is on community detection in network data. Load the karate club network that was discussed at lectures by typing data(karate) from the package sand.
+• Use the function cluster_fast_greedy() to perform modularity-based hierarchical clustering. 
+Use the functions sizes(), membership() and plot() to explore and plot the clusters identified by this method. Compare these identified clusters with the known allocation of the club members to the two factions, which you can extract with get.vertex.attribute(karate, "Faction").
+• Perform spectral clustering of this network. In particular:
+2
+– Use the graph.laplacian() function in the igraph package to calculate the Laplacian matrix of
+this graph.
+– Use the function eigen() to calculate the eigenvalues/vectors of the Laplacian matrix. Then use
+the function kmeans() to cluster the eigenvectors of the k smallest eigenvalues and inspect the k
+resulting communities.
+– Compare the results with those obtained using the modularity-based hierarchical clustering
+approach in the previous point and with the known allocation of the club members to the two
+different factions.
+```{r}
+library(igraph)
+library(sand)
+data(karate)
+greedy_cluster <- cluster_fast_greedy(karate)
+sizes(greedy_cluster)
+membership(greedy_cluster)
+
+```
+

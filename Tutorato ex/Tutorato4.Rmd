@@ -1,0 +1,361 @@
+---
+title: "Exercise 5"
+output:
+  html_document:
+    df_print: paged
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+```
+
+# Exercise 1 
+Use the validation set approach to estimate the test error of a logistic regression model that predicts
+default from income and balance. Follow these steps:
+## 1. Split the data into training and validation;
+```{r}
+library(ISLR)
+df1 <-  ISLR::Default
+set.seed(99)
+train_in <- sample(nrow(df1), 0.5*nrow(df1))
+train <-  df1[train_in,]
+test <-  df1[-train_in,]
+```
+## 2. Fit a model using only the training observations;
+```{r}
+glm.fit <- glm(default ~ income + balance, family = 'binomial', data = train)
+summary(glm.fit)
+```
+From the analysis of the results of the logistic regression we deduce that both the income and the balance are relevant factor for the prediction of the default.  
+
+# 3. Obtain predictions on the validation set (ie compute the posterior probabilities and threshold them using a chosen threshold);
+```{r}
+glm.prob <-  predict(glm.fit, test, type = 'response')
+treshold <-  .5
+glm.pred <-  rep('No', nrow(test))
+glm.pred[glm.prob > treshold] <-  'Yes'
+table(glm.pred, test$default)
+mean(glm.pred == test$default)
+```
+
+4. Compute the validation set error.
+```{r}
+mean(glm.pred != test$default)
+```
+5. Repeat 1-3 a number of times, using different training/validation splits. If you can, try to write this as a for loop. Inspect the different test errors and discuss the results.
+```{r}
+accuracies <-  c()
+errors <-  c()
+ticks <-  c()
+for (i in 1:5){
+  set.seed(i)
+  ticks <-  append(ticks, sprintf("Try %d",i))
+  train_in <- sample(nrow(df1), 0.5*nrow(df1))
+  train <-  df1[train_in,]
+  test <-  df1[-train_in,]
+  glm.fit <- glm(default ~ income + balance, family = 'binomial', data = train)
+  glm.prob <-  predict(glm.fit, test, type = 'response')
+  treshold <-  .5
+  glm.pred <-  rep('No', nrow(test))
+  glm.pred[glm.prob > treshold] <-  'Yes'
+  table(glm.pred, test$default)
+  accuracies <- append(accuracies, mean(glm.pred == test$default))
+  errors <-  append(errors, mean(glm.pred != test$default))
+  
+}
+
+print(cbind(ticks,accuracies,errors))
+mean_accuracy <- (mean(accuracies))
+print(mean_accuracy)
+print(sd(accuracies))**2
+```
+As we can see, the results are pretty similar with each other the variace between the 5 results is pretty low and we are quite satisfied with this result.  
+
+
+• Now consider a logistic regression model that predicts the probability of default from income, balance, and a dummy variable for student. Estimate the average test error using the validation set approach as before. Is there an advantage in including student?
+
+```{r}
+accuracies <-  c()
+errors <-  c()
+ticks <-  c()
+for (i in 1:5){
+  set.seed(i)
+  ticks <-  append(ticks, sprintf("Try %d",i))
+  train_in <- sample(nrow(df1), 0.5*nrow(df1))
+  train <-  df1[train_in,]
+  test <-  df1[-train_in,]
+  glm.fit <- glm(default ~ income + balance + student, family = 'binomial', data = train)
+  glm.prob <-  predict(glm.fit, test, type = 'response')
+  treshold <-  .5
+  glm.pred <-  rep('No', nrow(test))
+  glm.pred[glm.prob > treshold] <-  'Yes'
+  table(glm.pred, test$default)
+  accuracies <- append(accuracies, mean(glm.pred == test$default))
+  errors <-  append(errors, mean(glm.pred != test$default))
+  
+}
+
+print(cbind(ticks,accuracies,errors))
+mean_accuracy <- (mean(accuracies))
+print(mean_accuracy)
+print(sd(accuracies))**2
+```
+Well, from the results we can spot any difference in the accuracy between the logistc model with the dummy variable student. 
+Hence, we prefer the first model since it is less complex and produce the same results.
+   
+## Excercise 2  
+In this exercise, you will explore cross-validation in a regression context.
+A) Simulate a data set using randomly generated numbers from a normal distribution with mean 0 and variance 1, as follows:
+```{r}
+set.seed(1)
+x <- rnorm(100)
+y <- x - 2 * x^2 + rnorm(100)
+```
+Write down the model used to generate data in equation form. What is n and what is p?  
+The equation that we can retrieve from this model is: $y = x- 2x^2 + e$ <br>
+B) Create a scatterplot of x vs y. Comment on the relationship that you see
+```{r}
+plot(x,y)
+lines(mean(x), mean(y))
+```
+As we can see from the plot the points follow a normal distribution as we expected since they were created from a normal distribution. -> __So the relation between the two variables is quadratic__.<br>
+We can also spot that the distribution of points is centered in 0 and all the observation are inside the range between +- two times the standard deviation.  
+C) Set the random seed and compute the leave-one-out cross-validation (LOOCV) errors that result from
+fitting the following four models using least squares:
+1. y = β0 + β1x + e
+2. y = β0 + β1x + β2x2 + e
+3. y = β0 + β1x + β2x2 + β3x3 + e
+4. y = β0 + β1x + β2x2 + β3x3 + β4x4 + e
+D) Repeat the above changing the seed and discuss the results, comparing with the earlier seed. Do you
+get something different? Why?
+E) Which of the models evaluated in C had the smallest LOOCV error? Did you expect this? Why?
+F) Inspect model (4) and the significance of the coefficient estimates resulting from fitting the model using least squares. Do these results agree with the conclusions drawn based on the cross-validation results?
+Hints
+• You can store y and x in a data frame to ease model creation in points C-D.
+• LOOCV can be used in combination with glm() using the function cv.glm(data, glm.fit) (library
+boot) on a glm object. In general, the function can be used for K-fold cross-validation: by default, the
+functions performs a LOOCV (K = n).
+• Optional: you can also try to implement the function to calculate the LOOCV error by yourself by:
+1. Writing a loop over all the observations (1:n)
+2. Fitting the model on all data minus the ith observation
+3. Predicting the observation left out.
+4. Do you get the same result as the cv.glm function?
+```{r}
+library(boot)
+set.seed(11)
+dataf <- data.frame(y, x, x2 = x^2, x3 = x^3, x4 = x^4)
+glm.fit1 <- glm(y ~ x, data = dataf)
+loocv.err1 <- cv.glm(dataf, glm.fit1)
+loocv.err1$delta[1]
+```
+```{r}
+glm.fit2 <- glm(y ~ x + x2, data = dataf)
+loocv.err2 <- cv.glm(dataf, glm.fit2)
+loocv.err2$delta[1]
+```
+```{r}
+glm.fit3 <- glm(y ~ x + x2 + x3, data = dataf)
+loocv.err3 <- cv.glm(dataf, glm.fit3)
+loocv.err3$delta[1]
+```
+```{r}
+glm.fit4 <- glm(y ~ x + x2 + x3 + x4 , data = dataf)
+loocv.err4 <- cv.glm(dataf, glm.fit4)
+loocv.err4$delta[1]
+```
+```{r}
+Loovc_error <-  c()
+n_model <-  c(1,2,3,4)
+for (i in 1:2){
+  set.seed(i)
+  dataf <- data.frame(y, x, x2 = x^2, x3 = x^3, x4 = x^4)
+  glm.fit1 <- glm(y ~ x, data = dataf)
+  loocv.err1 <- cv.glm(dataf, glm.fit1)
+  loocv.err1$delta[1]
+  glm.fit2 <- glm(y ~ x + x2, data = dataf)
+  loocv.err2 <- cv.glm(dataf, glm.fit2)
+  loocv.err2$delta[1]
+  glm.fit3 <- glm(y ~ x + x2 + x3, data = dataf)
+  loocv.err3 <- cv.glm(dataf, glm.fit3)
+  loocv.err3$delta[1]
+  glm.fit4 <- glm(y ~ x + x2 + x3 + x4 , data = dataf)
+  loocv.err4 <- cv.glm(dataf, glm.fit4)
+  loocv.err4$delta[1]
+  Loovc_error <-  c(loocv.err1$delta[1],loocv.err2$delta[1],loocv.err3$delta[1],loocv.err4$delta[1])
+}
+plot(n_model, Loovc_error, main = 'LOOCV ERROR')
+lines(n_model, Loovc_error, type = 'b')
+```
+
+The results with another seed are exactly the same because LOOCV is deterministic ( __no randomness involved__ ). <br>
+The quadratic model $glm(y ~ x + x2, data = dataf)$ is has the lowest error, as expected since the underlying true model used fro data generation is quadratic. We can see the result also from the plot where we can see the typically elbow shape. 
+
+```{r}
+fit <- lm(y ~ x + x2 + x3 + x4, data = dataf)
+summary(fit)
+
+```
+As we expected the relevant predictors are x and x2: this confirms the result obtained from the LOOCV errors. 
+```{r}
+n <- nrow(dataf)
+predi <- NULL
+for (i in 1:n) {
+dataf.train <- dataf[-i, ]
+dataf.test <- dataf[i, ]
+lm.fit <- lm(y ~ x + x2 + x3 + x4, data = dataf.train)
+predi <- c(predi, predict(lm.fit, dataf.test))
+}
+sum((dataf$y - predi)^2)/n
+
+```
+```{r}
+loocv.err4$delta[1]
+```
+# Exercise 3  
+__This is an exercise on subset selection in a regression context.__
+• Similarly to Exercise 2, generate a predictor x of length n = 100 and a noise vector  y of the same size,
+using the rnorm() function.
+• Generate a response vector y of length n = 100 from the model
+y = β0 + β1x + β2x2 + β3x3 + ß
+where you can freely choose the values for the constants βi
+```{r}
+x <- rnorm(100)
+epsilon <- rnorm(100)
+βo <-  rnorm(1)
+βi <-  rnorm(1)
+βii <- rnorm(1)
+βiii <- rnorm(1)
+y <- ßo + ßi*x + ßii*x^2+ ßiii*x^3 + epsilon
+plot(x,y)
+```
+
+ We now pretend that we do not know the true model. On your simulated data, we try models with
+degrees varying between 1 and 10.  
+• Apply the “best subset selection” approach to select the best subset of the 10 predictors. The method is implemented by the regsubsets() function in the library leaps. This function has the same syntax as lm() and it returns the “best” model containing a subset of the given number of variables (input nvmax). What is the best model according to Cp, BIC, and adjusted R2? You can find these values in the summary of the fitted regsubsets object, with the names cp, bic, and adjr2, respectively. Choose
+the subset that optimizes these statistics (max or min depending on the statistic). Show some plots to support your answer and report the coefficients of the best model.
+```{r}
+install.packages('leaps')
+library(leaps)
+df <-  data.frame(x,y)
+regfit.full <-  regsubsets(y ~ poly(x, 10, raw = TRUE), data = df, nvmax = 10)
+summary(regfit.full)
+```
+```{r}
+reg.summary <-summary(regfit.full)
+names(reg.summary)
+```
+Value -> regsubsets returns an object of class 'regsubsets' containing no user-serviceable parts. It is designed to be processed by summary.regsubset
+which is a logical matrix indicating which elements are in each model. <br>
+rsq -> the r-squared for each model <br>
+rss -> reisudla sum of squares for each model <br>
+adjr2 -> Adjusted r-squared  <br>
+cp -> Mallows' cp  <br>
+bic -> Schwartz'information criterion BIC  <br>
+outmat -> A version of the which component that is formatted for printing <br>
+obj -> A copy of the regsubsets object. <br>
+All these can be used to support the selection of a 'best' model overall. 
+```{r}
+reg.summary$rsq
+plot(reg.summary$rsq, main = 'R-Squared for each model', xlab = 'Number of variables', ylab ='R^2' )
+```
+
+```{r}
+op <-  par(mfrow = c(1,2)) # the subsequent plots will be put in a 1 by 2 matrix
+plot(reg.summary$rss, xlab = 'Number of variables', ylab = 'RSS',type = 'l' )
+plot(reg.summary$adjr2, xlab = 'Number of variables', ylab = 'AdjR^2',type = 'l' )
+#Let's mark the model with the highest ADJ R^2
+nv <-  which.max(reg.summary$adjr2)
+points(nv, reg.summary$adjr2[nv], col ='indianred', cex = 2 , pch = 20)
+
+```
+The plots shows that the highest value for the Adjusted R-squared is reached when we consider 6 variables in our plots. However, in both the graphs we can clearly see the elbow shape ( a dramatic decrease/increase from the model 1 to model 2). Hence, although the model with 6 variables has the highest Adj R squared, we can still prefer the model with 2 variables since there is not a huge improvement in adding 4 more variables and we always prefer a less complex and more interpretable model. <br>
+To confirm this we go further in our analysis and we consider the Mallows'cp and the BIC.
+```{r}
+op <-  par(mfrow = c(1,2))
+plot(reg.summary$cp, main = 'Mallows\'cp', xlab = 'Number of variables',ylab = 'cp', type = 'l')
+plot(reg.summary$bic, main = 'BIC', xlab = 'Number of variables',ylab = 'BIC', type = 'l')
+bm <-  which.min(reg.summary$bic)
+points(bm, reg.summary$bic[bm], col = 'indianred', cex = 2, pch = 20  )
+```
+Analyzing the BIC graphs we are sure that our previous intuition was correct. Indeed, we see that the best model according to this criterion is the one with two variables. Moreover, the BIC's plot shows that after adding the second variable the BIC restart to grow. So the model with two variables is the optimal one. 
+```{r}
+plot(regfit.full, scale = 'bic')
+```
+
+
+```{r}
+plot(regfit.full, scale = 'adjr2')
+```
+
+
+```{r}
+plot(regfit.full, scale = 'Cp')
+```
+
+## Forward and backward stepwise selection  
+
+Repeat the previous task using forward stepwise selection and backwards stepwise selection, ie more
+efficient methods that do not search through the whole space of models. Both methods are implemented
+by regsubsets(), using the input method="forward" or method="backward", respectively. Compare
+the answer from the stepwise methods with best subset selection.
+
+When the number of predictors is large, it becomes computationally unfeasible and statistically risky to apply best subset selection: it may take ages to compute and there is an increased chance of overfitting. That's when forward or backward stepwise selection comes to the rescue. 
+<br>
+The function `regsubsets()` can also be used to perform forward or backward stepwise selection, with `method="forward"` (or `method="backward"`).
+```{r}
+regit.fwd <-regsubsets(y ~ poly(x, 10, raw = TRUE), data = df, nvmax = 10, method = 'forward') 
+summary(regit.fwd)
+```
+```{r}
+regit.bwd <-regsubsets(y ~ poly(x, 10, raw = TRUE), data = df, nvmax = 10, method = 'backward') 
+summary(regit.bwd)
+```
+Try comparing the best model obtained with the best subset vs. forward selection for increasing number of variables. The model should be identical for best subset and forward selection for 1 to 6 variables. 
+```{r}
+coef(regfit.full, 2)
+coef(regit.fwd,2)
+coef(regit.bwd,2)
+```
+```{r}
+fwd.summary <-  summary(regit.fwd)
+bwd.summary <-  summary(regit.bwd)
+op <-  par(mfrow = c(3,2)) 
+plot(fwd.summary$adjr2, xlab = 'Number of variables', ylab = 'AdjR^2',type = 'l', main = 'ADJ R^2 fwd' )
+nv <-  which.max(fwd.summary$adjr2)
+points(nv, fwd.summary$adjr2[nv], col ='indianred', cex = 2 , pch = 20)
+
+plot(bwd.summary$adjr2, xlab = 'Number of variables', ylab = 'AdjR^2',type = 'l', main = 'ADJ R^2 bwd' )
+nv <-  which.max(bwd.summary$adjr2)
+points(nv, bwd.summary$adjr2[nv], col ='indianred', cex = 2 , pch = 20)
+
+plot(fwd.summary$cp, main = 'Mallows\'cp fwd', xlab = 'Number of variables',ylab = 'cp', type = 'l')
+vp <-  which.min(fwd.summary$cp)
+points(vp, fwd.summary$cp[vp], col = 'indianred', cex = 2, pch = 20)
+
+plot(bwd.summary$cp, main = 'Mallows\'cp bwd', xlab = 'Number of variables',ylab = 'cp', type = 'l')
+vp <-  which.min(bwd.summary$cp)
+points(vp, bwd.summary$cp[vp], col = 'indianred', cex = 2, pch = 20)
+
+plot(fwd.summary$bic, main = 'BIC fwd', xlab = 'Number of variables',ylab = 'BIC', type = 'l')
+bm <-  which.min(fwd.summary$bic)
+points(bm, fwd.summary$bic[bm], col = 'indianred', cex = 2, pch = 20  )
+#
+
+plot(bwd.summary$bic, main = 'BIC bwd', xlab = 'Number of variables',ylab = 'BIC ', type = 'l')
+bm <-  which.min(bwd.summary$bic)
+points(bm, bwd.summary$bic[bm], col = 'indianred', cex = 2, pch = 20  )
+```
+```{r}
+coef(regit.fwd, which.min(fwd.summary$cp))
+```
+```{r}
+coef(regit.bwd, which.min(bwd.summary$cp))
+```
+
+```{r}
+coef(regit.bwd, which.min(bwd.summary$bic))
+```
+
+
+__Note: forward and backward procedures do not necessarily return the same model__
+

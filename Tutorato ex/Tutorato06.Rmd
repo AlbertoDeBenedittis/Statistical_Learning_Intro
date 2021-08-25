@@ -1,0 +1,213 @@
+---
+title: "Decision Tree"
+author: "Alberto De Benedittis"
+date: "18/4/2021"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Exercise 1  
+
+##Consider once again the Boston dataset (MASS library), which was introduced in Tutorato 5. Our objective is to predict medv from the other variables through random forests. To this aim: a. Split the data into training/test partitions.
+```{r}
+library(MASS)
+library(tree)
+library(randomForest)
+boston <-  MASS::Boston
+set.seed(1)
+train_in <-  sample(1:nrow(boston), nrow(boston)/2)
+b_train <-  boston[train_in,]
+b_test <-  boston[-train_in,]
+```
+
+## b. Apply a random forest model on the training set using mtry=6 and ntree=25.
+```{r}
+# mtry indicates the number of predictors that should be considered for each split of the tree. 
+# By default, randomforest() uses p/3 variables when building a random forest of regression trees, and sqr(p) variables when building a random forest of classification trees. 
+rf.boston <- randomForest(medv~., data = b_train, mtry = 6, ntree = 25, importance = T)
+rf.boston
+yhat.rf <-  predict(rf.boston, newdata = b_test)
+mean((yhat.rf - b_test[,'medv'])^2)
+# With the importance function we can see the importance of each variable. 
+importance(rf.boston)
+varImpPlot(rf.boston)
+```
+
+
+##c. Consider now a more comprehensive range of values for mtry and ntree: use this range to create a plot displaying the test error resulting from random forests on these data. You can model your plot after Figure 8.10 in the textbook.
+```{r}
+min_err <-  c()
+min_err_lab <-  c()
+round(ncol(boston)/3)
+ps <-  c(ncol(boston), ncol(boston)/3, round(sqrt(ncol(boston))))
+for ( i in 1:length(ps)){
+  rf.boston <- randomForest(medv~., data = b_train, mtry = ps[i], ntree = 25, importance = T)
+  plot(rf.boston, main= sprintf('Random Forest  with p = %f', (ps[i])))
+  yhat.rf <-  predict(rf.boston, newdata = b_test)
+  t_error <-  mean((yhat.rf - b_test[,'medv'])^2)
+  min_err <-  append(min_err, t_error)
+  min_err_lab <-  append(min_err_lab, (sprintf('p = %f', (ps[i]))))
+  print(sprintf('Random Forest  with p = %f', (ps[i])))
+  print(importance(rf.boston))
+  }
+min_err
+cbind(min_err,min_err_lab)
+
+```
+
+## d. Describe the results obtained and draw a conclusion on the optimal model to use. Use the importance() function to determine which variables are most important.  
+
+The number of p variables that produces the best random forest is  square root f p. Indeed, we know that this number of variables is usually picked when we compute random forests.
+Looking at the importance of the different variables we notice that in all three the models `lstat` and `rm` are the most important variables. 
+
+# Exercise 2   
+##Meet the Carseats data set, containing simulated observations of sales of child car seats at 400 different stores. It is part of the ISLR library.
+```{r}
+library(ISLR)
+car <-  ISLR::Carseats
+```
+
+The aim is to predict the quantitative variable Sales from the other variables using regression trees and
+related approaches.
+#a. Split the data set into a training set and a test set.
+```{r}
+#High <-  ifelse(car$Sales <= 8, 'No','Yes')
+#car <-  data.frame(car, High)
+train_in <-  sample(nrow(car), nrow(car)/2)
+c_train <-  car[train_in,]
+c_test <-  car[-train_in,]
+```
+
+#b. Fit a regression tree by recursive binary splitting to the training set. Plot the tree, and interpret the results. What test MSE do you obtain?
+```{r}
+library(tree)
+reg.tree <-  tree(Sales~., data = c_train)
+summary(reg.tree)
+plot(reg.tree)
+text(reg.tree, pretty = 0)
+yhat <- predict(reg.tree, newdata = c_test)
+plot(yhat,c_test$Sales)
+abline(0,1)
+test_error <- mean((yhat-c_test$Sales)^2)
+test_error
+```
+The summary function lists the variables that are used as internal nodes in the tree (`ShelveLoc`,`Price`,`Age`, `Income`,`Advertising`,`CompPrice`), the number of terminal nodes 18, and the training error rate =  1.992 = 362.5 / 182. 
+The test_error is 4.442252. 
+
+  
+##c. Use cross-validation in order to determine the optimal level of tree complexity for pruning. Produce a plot of the cross-validation deviance as a function of tree size. What is the optimal size? If you prune the tree according to this optimal size, does the test MSE improve?
+Now we will see weather pruning the tree will improve test performance. 
+```{r}
+cv.cars <-  cv.tree(reg.tree)
+plot(cv.cars$size, cv.cars$dev, type = 'b', main = 'Cross-validation deviance as a function of tree size', ylab = 'deviance', xlab = 'tree size')
+```
+From the plot it looks that the optimal size for the tree is 6. Let's how the MSE changes. 
+```{r}
+pruned <- prune.tree(reg.tree, best = 6)
+plot(pruned)
+text(pruned, pretty = 0 )
+```
+```{r}
+yhat_pruned <- predict(pruned, newdata = c_test)
+plot(yhat_pruned,c_test$Sales)
+abline(0,1)
+test_error <- mean((yhat_pruned-c_test$Sales)^2)
+test_error
+```
+It looks that there is no improvement in using the pruned tree.  
+##d. Use the bagging approach in order to analyze this data. What test MSE do you obtain? Use theimportance() function to determine which variables are most important and comment on what you obtain.
+```{r}
+bag.car <-  randomForest(Sales~., data = c_train, mtry=11, importance=T)
+bag.car
+```
+```{r}
+yhat.bag <-  predict(bag.car, newdata = c_test)
+plot(yhat.bag, c_test$Sales)
+mean((yhat.bag - c_test$Sales)^2)
+```
+The MSE computed with the bagging is lower than the ones computed previously
+##e. Use random forests to analyze this data. What test MSE do you obtain? Describe the effect of m(the number of variables considered at each split) on the error rate obtained. Use the importance() function to determine which variables are most important.
+```{r}
+rf.car <-  randomForest(Sales~., data = c_train, mtry=11/3, importance=T)
+bag.car
+yhat.rf <-  predict(bag.car, newdata = c_test)
+plot(yhat.rf, c_test$Sales)
+mean((yhat.rf - c_test$Sales)^2)
+```
+The result of the MSE is equal for the random forest and the bagging. 
+
+# Exercise 3 
+## For this exercise, we explore boosting on a simulated dataset. In order to simulate the data, run the following code:
+```{r}
+install.packages('mlbench')
+library(mlbench)
+set.seed(78)
+sim <- mlbench::mlbench.friedman1(400, sd = 1)
+sim <- cbind(sim$x, sim$y)
+sim <- as.data.frame(sim)
+colnames(sim)[ncol(sim)] <- "y"
+```
+## a. Create a training/test partition, splitting the data into two halves.
+```{r}
+df <-  sim
+train_in <-  sample(nrow(df), nrow(df)/2)
+sim_train <-  df[train_in,]
+sim_test <- df[-train_in,]
+```
+## b. Perform boosting on the training set with 1,000 trees for a range of values of the shrinkage parameter lambda. Plot the different shrinkage values on the x-axis and the corresponding training set MSE on the y-axis.
+```{r}
+library(gbm)
+boost.sim <-  gbm(y~., data = sim_train, distribution = 'gaussian', n.trees = 1000, interaction.depth = 4)
+boost.sim
+summary(boost.sim)
+```
+From the analysis of the summary we get that the most important variables are in order `V4`, `V2` and `V1`. Indeed, they account for the 75% of the variance. 
+We can also produce partial independence plots for these three variables. these plots illustrate the marginal marginal effect on selected variables on the response after integrating out other variable  
+```{r}
+plot(boost.sim, i = 'V4', main='V4')
+plot(boost.sim, i = 'V2', main='V2')
+plot(boost.sim, i = 'V1', main='V1')
+```
+We now use the boosted model to predict `y` on the test set. 
+```{r}
+yhat.boost <- predict(boost.sim, newdata = sim_test, n.trees = 1000)
+mean((yhat.boost - sim_test$y)^2)
+```
+## c. Produce a similar plot as the previous one, this time using the test set MSE. Comment on what you observe from comparing these two plots.
+
+```{r}
+my_seq <-  c(0.01, 0.02, 0.05,0.1,0.2,0.5)
+test_errors <-  c()
+train_errors <-  c()
+lambdas <-  c()
+for (i in my_seq){
+  boost.sim <-  gbm(y~., data = sim_train, distribution = 'gaussian', n.trees = 1000, interaction.depth = 4, shrinkage = i)
+  
+  yhat.boost <- predict(boost.sim, newdata = sim_test, n.trees = 1000)
+  
+  MSE <-  mean((yhat.boost - sim_test$y)^2)
+  
+  yhat.boost_train <- predict(boost.sim, newdata = sim_train, n.trees = 1000)
+  
+  MSE_train <-  mean((yhat.boost - sim_train$y)^2)
+  
+  lambdas <-  append(lambdas,i)
+  
+  train_errors <- append(test_errors, MSE_train)
+  
+  test_errors <-  append(test_errors, MSE)
+}
+cbind(lambdas, test_errors)
+plot(lambdas, test_errors, type = 'b', main = 'Test_error vs lambda')
+plot(lambdas, train_errors,type = 'b', main = 'Train_error vs lambda')
+```
+The train and the test errors are really close, there is just a little difference because the train errors is obviously slightly smaller than the test error. 
+From the plots we also see that the lowest test error is obtained with a value of the shrinkage parameter lambda equal to 0.02  
+
+```{r}
+?mlbench.friedman1
+```
+The result is coherent with our analysis

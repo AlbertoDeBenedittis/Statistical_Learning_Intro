@@ -1,0 +1,168 @@
+---
+title: "Tutorato7"
+author: "Alberto De Benedittis"
+date: "24/4/2021"
+output: html_document
+---
+# SUPPORT VECTOR MACHINES 
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+RNGversion('3.5.9')
+```
+
+```{r}
+library(e1071)
+```
+
+# Exercise 1
+
+```{r}
+X1 <-  c(3,2,4,1,2,4,4)
+X2 <-  c(4,2,4,4,1,3,1)
+#category <-  c('RED','RED','RED','RED','BLUE','BLUE','BLUE')
+category <-  c(1,1,1,1,-1,-1,-1)
+dati <-  data.frame(cbind(X1, X2, category))
+dati$category <-  as.factor(dati$category)
+view(dati)
+```
+
+```{r}
+Hyper <-  svm(category ~ ., data=dati, kernel="linear", cost=2, scale = F)
+Hyper
+plot(Hyper, data = dati)
+```
+
+
+```{r}
+Hyper$index
+```
+
+```{r}
+new_x1 <-  1
+new_x2 <-  1.5
+X1 <-  append(X1, new_x1)
+X2 <-  append(X2, new_x2)
+category <-  append(category, 1)
+plot(X1,X2, main = 'The space with a new observation')
+abline(0.5,1, col = 'red', lwd = 2) # this line should represent the old hyperplane
+
+```
+```{r}
+dati2 <-  data.frame(cbind(X1, X2, category))
+Hyper2 <-  svm(category ~ ., data=dati2, kernel="linear", cost=10, scale = F)
+Hyper2
+plot(Hyper2, dati2)
+```
+# Exercise 2 
+In this exercise, we evaluate a support vector classifier on simulated data. To this aim:
+• Generate a data set with n = 500 observations and p = 2 variables, such that the observations belong to two classes with a linear decision boundary between them. For instance, you can do this by specifying the outcome variable to be derived from a linear combination of the independent variables (and add
+some error to allow for some overlapping):
+```{r}
+```
+
+
+```{r}
+n_obs <- 500
+x1 <- runif(n_obs) - 0.5
+x2 <- runif(n_obs) - 0.5
+er <- rnorm(n_obs, 0, 0.01)
+y <- 1 * (3 * x1 - 2 * x2 + er > 0)
+```
+
+• Plot the observations, colored according to their class labels. Your plot should display X1 on the x-axis, and X2 on the y-axis
+```{r}
+library(tidyverse)
+d2 <-  data.frame(x1, x2, y = as.factor(y))
+gg <- ggplot(d2, aes(x=x1, y=x2)) + 
+  geom_point(aes(col=y), size=3)
+plot(gg)
+```
+
+
+```{r}
+set.seed(1)
+svm.fit <-  svm(y ~ ., data = d2, kernel = 'linear', cost = 10, scale = F)
+svm.fit$index
+plot(svm.fit, d2, )
+```
+Fit a support vector classifier to the data with X1 and X2 as predictors. Obtain a class prediction for
+each training observation. Plot the observations, colored according to the predicted class labels
+```{r}
+tune.out <-  tune(svm,y ~ ., data = d2, kernel = 'linear', ranges = list(cost= c(0.001,0.01,0.1,1,5,10,100)))
+summary(tune.out)
+```
+```{r}
+bestmod <-  tune.out$best.model
+summary(bestmod)
+plot(bestmod, d2)
+```
+Now we create some test observation to make our prediction 
+```{r}
+x1test <- runif(n_obs) - 0.5
+x2test <- runif(n_obs) - 0.5
+ert <- rnorm(n_obs, 0, 0.01)
+ytest <- 1 * (3 * x1test - 2 * x2test + ert > 0)
+testdata <-  data.frame(x1test, x2test, ytest = as.factor(ytest))
+ypred <-  predict(bestmod, testdata)
+table(predict = ypred, truth = testdata$ytest)
+```
+
+Add the true decision surface on the plot. How did the method do?
+```{r}
+mean(ypred == testdata$ytest)
+```
+Actually, the model does not perform well, it is just a little bit better than random guessing. 
+
+# Exercise 3 
+In this problem, you will use a support vector classifier to predict whether a given car gets a high or low gas
+mileage based on a number of predictors describing the vehicle. For the analysis we will use the Auto data
+set in the ISLR library.
+```{r}
+library(ISLR)
+cards <-  ISLR::Auto
+```
+• Create a binary variable that takes on a 1 for cars with gas mileage above the median, and a 0 for cars
+with gas mileage below the median
+```{r}
+cards$category <- ifelse(cards$mpg > median(cards$mpg),1,0)
+```
+
+```{r}
+
+gg2 <- ggplot(cards, aes(x = mpg, y = horsepower)) + 
+  geom_point(aes(col=category), size=3)
+plot(gg2)
+```
+```{r}
+nomi_cat <-  c('cylinders', 'displacement', 'horsepower', 'weight', 'acceleration', 'year', 'origin')
+for (i in 2:8){
+  
+  gg2 <- ggplot(cards, aes(x = mpg, y = cards[,i])) + 
+  geom_point(aes(col=category), size=3)+ labs(title="Data classification", subtitle= sprintf("Mpg fixed variable on the x-axes and %s on the y-axes", nomi_cat[i]), y=sprintf('%s', nomi_cat[i]), x="MPG")
+  plot(gg2)
+  
+}
+```
+
+
+Fit a support vector classifier to the data with various values of cost, in order to predict whether a car gets high or low gas mileage. Report the cross-validation errors associated with different values of this parameter.
+```{r}
+svm.fit2 <-  svm(category~., data = cards, kernel = 'linear', cost = 10, scale = F)
+svm.fit2
+```
+```{r}
+tune.out2 <-  tune(svm, category~., data = cards, kernel = 'linear', ranges = list(cost = c(0.001,0.01,0.1,1,5,10,100)))
+summary(tune.out2)
+bestmod2 <-  tune.out2$best.model
+summary(bestmod2)
+```
+Find ways of visualizing the results e.g. plotting pairs of predictors and colouring the two classes.
+Comment on your results.
+```{r}
+plot(bestmod2, cards)
+```
+

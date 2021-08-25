@@ -1,0 +1,349 @@
+---
+title: "Tutorato5"
+author: "Alberto De Benedittis"
+date: "9/4/2021"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+```
+
+# Exercise 1 
+The College dataset (contained in the ISLR library) collects statistics measured on 18 variables for 777 US colleges. Some of the variables include whether the college is a private or public institution, the number of application received, the number of applications accepted, etc. (for full details: ?College)
+```{r}
+library(ISLR)
+df <-  ISLR::College
+```
+Here, we want to predict the number of applications received using the other variables.  
+## Split the data into a training/test set.
+```{r}
+set.seed(1)
+train_in <- sample(nrow(df), .5*nrow(df))
+train <-  df[train_in,]
+test <-  df[-train_in,]
+```
+## Fit a least squares linear model on the training set set and evaluate the error on the test set.
+```{r}
+glm.fit <-  lm(Apps~., data = train)
+glm.sum <- summary(glm.fit)
+```
+
+According to the summary the variables that effect the choice of the students for the University are: Private,Accept (this is quite expected since it is clear that there is a correlation between the number of accetted people and the people who send the application),Enroll,Top10,Top25,Outstate,Roomboard,Phd (although it is a borderline situation but as we know this could be cause by the seed) , Expend and grad.rate.
+Now that we have created the model on the training set wwe want to test it on the validation set. 
+
+```{r}
+glm.pred <-  predict(glm.fit, test, type = 'response')
+MSE <-  mean((test$Apps- glm.pred )^2)
+MSE
+```  
+## Fit a ridge regression model on the training set, choosing λ by cross-validation. Report the test error.
+
+__RIDGE__
+```{r}
+library(glmnet)
+x <-  model.matrix(Apps~.,train)[,-1] #toglie l'intercetta
+y <-  train$Apps
+grid <-  10^seq(10, -2, length = 100) 
+#here we have chosen to implement the function over a grid of values ranging from lambda = 10^10 to lambda = 10^-2, essentially covering the full range of scenarios from the null model containing only the intercept, to the least squares fit.
+ridge.fit <- glmnet(x,y,alpha = 0, lambda = grid)
+# by default the glmnet standardizes the variables.
+```
+
+```{r}
+dim(coef(ridge.fit))
+# Associated with each value of lambda is a vector of ridge regression coefficients, stored in a matrix that can be accessed by coef(). In this case, it is a 19X100 matrix with 19 rows (one for each predictor, plus an intercept) and 100 columns (one for each value of lambda)
+```
+```{r}
+ridge.pred <-  predict(ridge.fit, s=4, newx = model.matrix(Apps~., data = test)[,-1])
+mean((ridge.pred-test$Apps)^2)
+```
+In general, instead of arbitrary choosing lambda = 4, it would be better to use cross-validation to choose the tuning parameter lambda. We can do this using the built-in cross-validation function, `cv.glmnet()`. By default, the function performs ten-fold cross-validation, though this can be changed using the argument `nfolds`. 
+```{r}
+cv.out <- cv.glmnet(x, y, alpha=0)
+plot(cv.out)
+bestlam <- cv.out$lambda.min
+print(bestlam)
+```
+Therefore, we see that the value of lambda that results in the smallest cross validation error is 316.11. Now, let's compute the test MSE associated with this value of lambda
+```{r}
+ridge.pred_best <- predict(ridge.fit, s = bestlam, newx = model.matrix(Apps~., data = test)[,-1])
+mean((ridge.pred_best - test$Apps)^2)
+```
+Finally, we refit our ridge regression model on the full data set, using the value of lambda chosen by cross-validation, and examine the coefficients estimates. 
+```{r}
+out <-  glmnet(model.matrix(Apps~., df)[,-1], df$Apps, alpha = 0)
+predict(out, type = 'coefficients', s = bestlam)
+```
+As expected, none of the coefficients are zero-ridge regression does not perform variable selection. 
+__LASSO__
+```{r}
+lasso.fit <-  glmnet(x, y, alpha = 1, lambda = grid)
+plot(lasso.fit)
+```
+We can see from the coefficient plot that depending on the choice of tuning parameter, some of the coefficients will be exactly equal to 0. <br>We now perform cross validation and compute the associated test error.
+```{r}
+cv.out2 <- cv.glmnet(x, y, alpha = 1)
+plot(cv.out2)
+bestlam2 <-  cv.out2$lambda.min
+lasso.pred <-  predict(lasso.fit, s = bestlam2, newx = model.matrix(Apps~., test)[,-1])
+mean((lasso.pred - test$Apps)^2)
+```
+```{r}
+out2 <-  glmnet(x,y,alpha = 1, lambda = grid)
+# Forse va inserito il cv.out2 il risultato della cross validation per il calcolo dei coefficienti. 
+lasso.coef <-  predict(cv.out2, type = 'coefficients', s = bestlam2)
+lasso.coef
+```
+
+The lasso has a substantial advantage over ridge regression in that the resulting coefficients estimates are sparse. 
+
+# Exercise 2 
+The Boston data (MASS library) contains housing values in the suburbs of Boston for a sample of 506
+observations. The aim is to predict per capita crime rate (crim) from the other variables.
+a. Try out some of the regression methods you learned so far, such as subset selection (forward and
+backward), lasso, ridge regression. Present and discuss results for the approaches that you consider.
+b. Propose a model (or set of models) that seem to perform well on this data set, and justify your answer.
+Make sure that you are evaluating model performance using validation set error, cross-validation, or
+1
+some other reasonable alternative, as opposed to using training error.
+c. Inspect your selected model. Does it involve all of the features in the data set?
+## Best subset selection 
+```{r}
+library(MASS)
+library(leaps)
+boston <-  MASS::Boston
+regfit.full <-  regsubsets(crim~., data = boston, nvmax = 13)
+reg.summary <- summary(regfit.full)
+par(mfrow = c(2,2))
+# RSS
+plot(reg.summary$rss, xlab = 'Number of variables', ylab = 'RSS', type = 'l', main = 'RSS')
+# ADJ R^2
+plot(reg.summary$adjr2, xlab = 'Number of variables', ylab = 'Adjusted RSq', type = 'l', main = 'Adjusted R-squared')
+Rsq_p <-  which.max(reg.summary$adjr2)
+points(Rsq_p, reg.summary$adjr2[Rsq_p], col = 'indianred', cex = 2, pch = 20)
+# CP MALLOW
+plot(reg.summary$cp, xlab = 'Number of variables', ylab = 'Cp\'Mallow', type = 'l', main = 'CP\'s Mallow')
+CP_p <-  which.min(reg.summary$cp)
+  points(CP_p, reg.summary$cp[CP_p], col = 'indianred', cex = 2, pch = 20)
+# BIC
+plot(reg.summary$bic, xlab = 'Number of variables', ylab = 'BIC', type = 'l', main = 'BIC')
+bic_p <-  which.min(reg.summary$bic)
+points(bic_p, reg.summary$bic[bic_p], col = 'indianred', cex = 2, pch = 20)
+```
+  
+Wow, here it is difficult to assess which is the best model because the  Adjusted R-squared, CP's Mallow and the BIC suggest quite different options.
+Indeed, the CP's Mallow and the Adjusted R-squared suggest that the best model is the one with 8 variable (Actually, the adjusted R-squared suggest the model with 9 variables, but since there is not much difference and the situation is already quite complicated, we prefer to say that these two methods suggest the same result. Moreover, according to the one standard error rule when we are uncertain between two models we should always prefer the simplest one if there is not a huge difference). <br>
+On the other hand, the BIC shows that the model with three variable is the best one. 
+<br>
+Given these results I am not completely sure on which is the best model. 
+However, we would opt for the model with 3 variables because as said before we tend to prefer simpler model.
+We continue our analysis and we hope to find an answer.
+## Forward and backward stepwise selection
+Now we want to perform both forward stepwise selection and backward stepwise selection. 
+```{r}
+regfit.fwd <-  regsubsets(crim~., data = boston, nvmax = 13, method = 'forward')
+summ.fwd <- summary(regfit.fwd)
+par(mfrow = c(2,2))
+# RSS
+plot(summ.fwd$rss, xlab = 'Number of variables', ylab = 'RSS', type = 'l', main = 'RSS')
+# ADJ R^2
+plot(summ.fwd$adjr2, xlab = 'Number of variables', ylab = 'Adjusted RSq', type = 'l', main = 'Adjusted R-squared')
+Rsq_p <-  which.max(summ.fwd$adjr2)
+points(Rsq_p, summ.fwd$adjr2[Rsq_p], col = 'indianred', cex = 2, pch = 20)
+# CP MALLOW
+plot(summ.fwd$cp, xlab = 'Number of variables', ylab = 'Cp\'Mallow', type = 'l', main = 'CP\'s Mallow')
+CP_p <-  which.min(summ.fwd$cp)
+  points(CP_p, summ.fwd$cp[CP_p], col = 'indianred', cex = 2, pch = 20)
+# BIC
+plot(summ.fwd$bic, xlab = 'Number of variables', ylab = 'BIC', type = 'l', main = 'BIC')
+bic_p <-  which.min(summ.fwd$bic)
+points(bic_p, summ.fwd$bic[bic_p], col = 'indianred', cex = 2, pch = 20)
+```
+```{r}
+regfit.bwd <-  regsubsets(crim~., data = boston, nvmax = 13, method = 'backward')
+summ.bwd <- summary(regfit.bwd)
+par(mfrow = c(2,2))
+# RSS
+plot(summ.bwd$rss, xlab = 'Number of variables', ylab = 'RSS', type = 'l', main = 'RSS')
+# ADJ R^2
+plot(summ.bwd$adjr2, xlab = 'Number of variables', ylab = 'Adjusted RSq', type = 'l', main = 'Adjusted R-squared')
+Rsq_p <-  which.max(summ.bwd$adjr2)
+points(Rsq_p, summ.bwd$adjr2[Rsq_p], col = 'indianred', cex = 2, pch = 20)
+# CP MALLOW
+plot(summ.bwd$cp, xlab = 'Number of variables', ylab = 'Cp\'Mallow', type = 'l', main = 'CP\'s Mallow')
+CP_p <-  which.min(summ.bwd$cp)
+  points(CP_p, summ.bwd$cp[CP_p], col = 'indianred', cex = 2, pch = 20)
+# BIC
+plot(summ.bwd$bic, xlab = 'Number of variables', ylab = 'BIC', type = 'l', main = 'BIC')
+bic_p <-  which.min(summ.bwd$bic)
+points(bic_p, summ.bwd$bic[bic_p], col = 'indianred', cex = 2, pch = 20)
+```
+Performing the forward stepwise selection and the backward stepwise selection does not help. Indeed, the results do not help to find a clear solution. 
+<br>
+Now we try to choose among model using  the __Validation Set Approach__ and __Cross Validatiom__. 
+To do so we need to split the data set into a train set and a validation set. 
+```{r}
+train_in <-  sample(nrow(boston), .5*nrow(boston))
+boston_t <- boston[train_in,]
+boston_v <- boston[-train_in,]
+regfit.best <- regsubsets(crim~., data = boston_t, nvmax = 13 )
+```
+We now compute the validation set error for the best model of each model size. We first make a model matrix from the test data. 
+```{r}
+test.mat <- model.matrix(crim~., data = boston_v)
+```
+Now we run a loop, and for each size i, we extract the coefficients from regit.best for the best model of that size, multiply them into the appropriate columns of the test model matrix to form the predictions, and compute the test MSE. 
+```{r}
+val.errors <- rep(NA,13)
+for (i in 1:13){
+  coefi <-  coef(regfit.best, id=i)
+  pred <- test.mat[, names(coefi)] %*%coefi
+  val.errors[i] <-  mean((boston_v$crim-pred)^2)
+}
+```
+Now we want to find the model that minimizes the error.
+```{r}
+val.errors
+which.min(val.errors)
+plot(val.errors, type = 'b', main = 'MSE for the different models', xlab = 'Number of variables', ylab = 'MSE')
+points(which.min(val.errors), val.errors[which.min(val.errors)], cex=2, pch=20, col='red')
+```
+```{r}
+regfit.best <-  regsubsets(crim~., data = boston, nvmax = 13)
+coef(regfit.best, 2)
+```
+We noe try to choose among the models of different sizes using cross 
+validation 
+```{r}
+## PREDICT FOR REGSUBSETS
+predict.regsubset <-  function(object, newdata,id){
+  form <-  as.formula(object$call[[2]])
+  mat <-  model.matrix(form, newdata)
+  coefi <- coef(object,id=id)
+  xvars <-  names(coefi)
+  mat[,xvars]%*%coefi
+}
+```
+
+```{r}
+# first we create a vector that allocates each observation to one of k = 10 folds, and we create a matrix in which we will store the results.
+k <-  10 
+folds <-  sample(1:k, nrow(boston), replace = T)
+cv.errors <-  matrix(NA, k, 13, dimnames = list(NULL, paste(1:13)))
+# Now we write a for loop that performs cross validation
+for (j in 1:k){
+  best.fit <-  regsubsets(crim~., data = boston[folds !=j,], nvmax = 13)
+  for ( i in 1:13){
+    pred <-  predict.regsubset(best.fit, boston[folds == j,], id = i)
+    cv.errors[j,i] <-  mean((boston$crim[folds == j] - pred)^2)
+  }
+   }
+# This has given us a 10X13 matrix, of which the (i,j)th element corresponds to the test MSE for the ith cross-validation fold for the best j-variable model. We use the apply() function to average over the columns of this matrix in order to obtain a vector for which the jth element is the cross-validation error for the j-variable model. 
+mean.cv.errros <- apply(cv.errors,2,mean)
+mean.cv.errros
+par(mfrow = c(1,1))
+plot(mean.cv.errros,type = 'b', main = 'MSE CV', xlab = '# variables', ylab = 'MSE')
+```
+It looks that the best model for the cross-validation is the 9th. 
+```{r}
+reg.best <-  regsubsets(crim~., data = Boston, nvmax = 13)
+coef(reg.best,9)
+```
+The latest result shows that the best model is actually the 9th, this results although unexpected look reasonable. Indeed, at the beginning f the analysis both the CP's Mallow and the Adjusted R-square spot as best model the one with 8-9 variables. 
+The model does not include all the variables but only 9 over 13 they are: `zn`,`indus`, `nox`, `dis`, `rad`, `ptrario`, `black`, `lstat`, `medv`. 
+<br>
+Now we try to use the _LASSO REGRESSION_ and see if the result is confirmed or not. 
+```{r}
+x <-  model.matrix(crim~., data = boston)
+y <-  boston$crim
+train_in <- sample(1:nrow(x), .5*nrow(x))
+lasso.mod <-  glmnet(x[train_in , ], y[train_in], alpha = 1, lambda = grid)
+plot(lasso.mod)
+```
+```{r}
+cv.out <- cv.glmnet(x[train_in,], y[train_in], alpha = 1)
+plot(cv.out)
+bestlam <- cv.out$lambda.min
+lasso.pred <- predict(lasso.mod, s = bestlam, newx = x[-train_in,])
+mean((lasso.pred-y[-train_in]))
+```
+```{r}
+out <-  glmnet(x,y,alpha = 1, lambda = grid)
+lasso.coef <-  predict(out, type = 'coefficients', s = bestlam)
+lasso.coef
+```
+
+Well, the lasso suggest another different model, this one contains only six variables ( all of them were included in the previous 9-variables model, so at least there is nothing too strange). The Lasso regression has many advantages so we can think that the model obtained with this procedure is reasonably good.
+
+## Exercise 3 
+```{r}
+x <- rnorm(100)
+epsilon <- rnorm(100)
+βo <-  rnorm(1)
+βi <-  rnorm(1)
+βii <- rnorm(1)
+βiii <- rnorm(1)
+y <- ßo + ßi*x + ßii*x^2+ ßiii*x^3 + epsilon
+plot(x,y)
+```
+```{r}
+df <-  data.frame(x,y)
+regfit.full <-  regsubsets(y ~ poly(x, 10, raw = TRUE), data = df, nvmax = 10)
+summary(regfit.full)
+```
+
+We now pretend that we do not know the true model and fit a 
+polynomial model with degree 10 on the simulated data. 
+Fit a lasso model using the 10 predictors. 
+Select the optimal ?? by cross-validation (CV), specifying a grid of 
+possible ?? values 
+```{r}
+lasso <- cv.glmnet(model.matrix(y ~poly(x,10), data.frame(x,y)), y, alpha=1, lambda= grid, nfolds=10)
+```
+
+#(see the beginning of 6.6.1); plot the CV error as a function
+#of ??. 
+```{r}
+plot(lasso)
+```
+
+#Report and discuss the coefficient estimates. 
+
+
+#Is the selected model close to the true model, i.e. the
+#model that you used for simulating the data?
+```{r} 
+coef(lasso)  # we consider only the intercept 
+```
+
+#  b. As a second simulation, generate a new response vector y 
+#according to the model y = ??0 + ??7x^7+e
+```{r}
+y2 <- 63 +5*x^7+rnorm(100)
+```
+
+##where you choose a value for ??7 (and reuse the previous value for ??0). 
+#Perform best subset selection and the lasso, again with a polynomial 
+#model of degree 10.
+```{r}
+regfit_full <- regsubsets(y2~ poly(x,10), data=data.frame(x,y))
+summary(regfit_full)
+plot(regfit_full) #good prediction for model up to degree 7 !
+```
+
+#For lasso, select the optimal ?? by cross-validation,
+#letting the function choose its own grid of values. 
+#Discuss the results obtained.
+
+```{r}
+lasso_2 <- cv.glmnet(model.matrix(y ~poly(x,10), data.frame(x,y)), y, alpha=1,nfolds=10)
+lasso_min <- glmnet(model.matrix(y ~., data.frame(x,y)), y, alpha=1,lambda = lasso_2$lambda.min)
+coef(lasso_min)
+```
+
+
+

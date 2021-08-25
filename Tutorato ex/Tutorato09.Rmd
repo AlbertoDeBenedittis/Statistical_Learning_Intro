@@ -1,0 +1,196 @@
+---
+title: "Untitled"
+author: "Alberto De Benedittis"
+date: "9/5/2021"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+__EXERCISE 1__
+In this exercise we explore the use of PCA on the classic data set USArrests (part of the base R package):
+the observations are the 50 states of the USA, and the values represent arrests per 100,000 residents for three major crimes, plus the percent of urban population
+```{r}
+ARRESTS <-  USArrests
+```
+### Assess how the variables are distributed, i.e., by computing means and standard deviations. Based on what you observe, decide whether a PCA could benefit from standardizing the variables or not.
+```{r}
+summary(ARRESTS)
+variances <-  c()
+labels <- c()
+for (i in (1:ncol(ARRESTS))){
+  labels <-  append(labels, colnames(ARRESTS)[i])
+  variances <-  append(variances, sd(ARRESTS[,i]))
+}
+VARIANCES <-  data.frame(labels,variances)
+print(VARIANCES)
+```
+If we have to standardize or not our variables we have to compare among which values the different categories range. Thus, we have to look at the standard deviation (or the variances), and the means. Here we see that the variances  are quite different among the variables as well as the ranges of values of each variable. 
+For instance, we see that values of the category murders range between 0.8 and 17.4 whereas, the values of assault range between 45 and 337. 
+In addition, we look at the table of the standard deviation we notice that assult has a sd which is almost 9 times the one of rape. 
+To conclude, we have to standardize our data set because our main task with the PCA is to explain the variable and the relations among the variables. 
+### • Perform PCA on the USArrests data, using the function prcomp(). The function has a boolean argument scale (default: FALSE) to enable/disable variable scaling (i.e., to transform the variables to unit variance). There is also another boolean argument center (default: TRUE) to enable/disable variable centering (i.e., to have zero mean). The computed PCA object is a list with several elements: rotation contains the principal component loadings; x has the PC score vectors; sdev stores the standard deviations of each PC.
+We now perform principal components analysis 
+```{r}
+pr.out <- prcomp(ARRESTS, scale = T)
+pr.out$rotation # principal components loading
+pr.out$x # pc score vectors 
+pr.out$sdev # stores the standard deviations of each pc
+summary(pr.out)
+```
+### • Explore the output, in particular the loadings and the score vectors and match these with the notation used in the lecture notes
+```{r}
+biplot(pr.out, scale = 0 )
+```
+```{r}
+pr.out$sdev 
+```
+With the sdev we show the standard deviation explained by each components.
+From this we can easily compute the variance
+```{r}
+pr.var = pr.out$sdev^2
+pr.var
+```
+### • Calculate the Proportion of Variance Explained (PVE) by each PC. This can be done in two ways:– Obtain the variance explained by each PC by squaring sdev, then divide each value by the sum of the variances to get the proportions; – Apply Equation 10.8 using the loadings computed by prcomp. To compute the proportion of variance explained by each principal component, we simply divide the variance explained by each principal component by the total variance explained by all four principal components:
+```{r}
+pve <-  pr.var/ sum(pr.var)
+pve
+```
+We see that the first principal component explains 62% of the variance in the data, the next principal component explains 24.7% of the variance and so forth. We can plot the PVE explained by each component, as well as the cumulative PVE, as follows:
+```{r}
+plot(pve, xlab = 'Principal Component', ylab='Proportion of variance explained', ylim = c(0,1), type = 'b')
+```
+```{r}
+plot(cumsum(pve), xlab = 'Principal component', ylab = 'Cumulative proportion of variance explained', ylim = c(0,1),type='b')
+```
+
+
+__EXERCISE 2__
+On the book website, there is a gene expression data set (Ch10Ex11.csv) that consists of 40 tissue samples with measurements on 1,000 genes. The first 20 samples are from healthy patients, while the second 20 are from a diseased group. In this exercise, we are going to use the class label only at a validation stage. So the
+plan is to use PCA and then check whether the reduced data shows the split into the two classes.
+
+
+### • Load in the data using read.csv(). Have a look at the file contents beforehand in order to choose the right options for read.csv (e.g., What is the delimiter? Is there a header?)
+```{r}
+GENE <-  read.csv('Ch10Ex11.csv', header = F)
+```
+### Perform PCA on the 40 observations and get a summary of the proportion of variance explained.
+Before performing a PCA, we specify that with this data set there is no need to scale the variables to have standard deviation one. The measurement are in the same units for each gene.   
+```{r}
+pr.out <-  prcomp(t(GENE), scale = T )
+summary(pr.out)
+```
+```{r}
+biplot(pr.out)
+```
+
+### Compute and plot the PVE and the cumulative PVE.
+```{r}
+pr.var <- pr.out$sdev^2
+pve <-  pr.var/sum(pr.var)
+plot(pve, xlab = 'Principal Component', ylab='Proportion of variance explained', ylim = c(0,1), type = 'b', main = 'PVE')
+plot(pve, xlab = 'Principal Component', ylab='Proportion of variance explained', ylim = c(0,0.2), type = 'b', main = 'PVE')
+plot(cumsum(pve), xlab = 'Principal component', ylab = 'Cumulative proportion of variance explained', ylim = c(0,1),type='b', main = 'Cumulative PVE')
+```
+From these two plots we see that each component explains low variance. Indeed, we notice that the first component explains the 20% of the variance, while all the others explain less than 5% of the variance. 
+This can also be seen from the cumulative PVE plot, we notice that to reach a reasonably high level of explained variance we need many components. 
+###Plot the first two principal component score vectors. Use a different color to indicate the observations in each of the two classes
+```{r}
+barplot(pve[1:2],col=c('firebrick', 'orange'), main = 'Variance explained by the first two components')
+
+```
+```{r}
+library(ggplot2)
+```
+
+
+```{r}
+
+y <- rep(c(1,2),500)
+pc_label <- data.frame(pr.out$x, y=as.factor(y))
+#ggparcoord(data=pc_label, columns=1:2, groupColumn=ncol(pc_label))
+ggplot(data=pc_label) + 
+geom_point(aes(x=PC1, y=PC2, colour=y))
+```
+```{r}
+labels <-  factor(c(rep('healthy', 20), rep('diseased', 20)))
+
+plot(pr.out$x[,1:2], col = ifelse(labels == 'diseased', 'red', 'blue'))
+```
+
+### • You will notice that the two components match quite nicely with the two classes. Thus, use the PCA results to find a way to determine which genes differ the most between the two classes/components. Table 10.1 in the textbook may provide you with a hint: you have to summarize it so to have a single numerical score for each variable.
+
+```{r}
+pr.out$rotation# matrice 40 x 1000 dove le righe sono i pc
+# una variabile importante avrà un loading grande in almeno una delle componenti. Prendere la matrice di rotation e riassumere un vettore sommando le righe
+total_load <- apply(pr.out$rotation, 1, sum)  # sono i loading totali 
+head(order(abs(total_load), decreasing = T),5)
+# la variable 889 è la più importante !!! 679 la seconda variabile più importantw
+```
+__EXERCISE 3__
+The College dataset (contained in the ISLR library) collects statistics measured on 18 variables for 777 US colleges. Some of the variables include whether the college is a private or public institution, the number of application received, the number of applications accepted, etc. (for full details: ?College)
+You already worked on this dataset in Tutorato 5, applying least squares models, ridge regression, and the lasso for variable selection. In this exercise, you will explore the application of Principal Component Regression (PCR) and Partial Least Squares (PLS) models.
+Both methods are implemented in the R library pls, so you have to install.packages("pls") first. PCR is performed by the pcr() function, which has a similar syntax to that for lm() with the following additional
+options:
+• scale=TRUE for standardizing each predictor before generating the principal components;
+• validation="CV" to compute the 10-fold cross-validation error for each possible value of M (the number of principal components used).
+PLS is performed by the plsr() function, with the same syntax and options as pcr().
+As usual you can examine the results of both methods with a summary() call. To plot the cross-validation MSE
+it is possible to use the validationplot() function on the fitted object, with the argument val.type="MSEP".
+```{r}
+library(pls)
+```
+```{r}
+COLLEGE <- ISLR::College
+```
+
+Perform the analysis on the dataset. In particular:
+###Split the dataset into a training and test set.
+```{r}
+set.seed(99)
+train_in <-  sample(nrow(COLLEGE), nrow(COLLEGE)*.5)
+TRAIN <- COLLEGE[train_in,]
+VALID <-  COLLEGE[-train_in,]
+```
+### Fit a PCR model on the training set, using cross-validation to support the choice of M. Report the test error obtained, along with the value of M selected.
+```{r}
+PCR <- pcr(Apps~. ,data = TRAIN, scale=T, validation = 'CV') 
+summary(PCR)
+```
+```{r}
+M <- PCR$ncomp # Number of components. 
+```
+Elbow rule -> we can decide to consider 5 components.
+17 is the optimal number but there is no improvement if compered with the ls method. 
+The key concept is that we can reach similar results with fewer components. 
+```{r}
+validationplot(PCR)
+```
+
+Well the number of components considered let me think that something went wrong because we have considered all the predictors excpet one that is prorbably Apps
+```{r}
+prediction <-  predict(PCR, VALID)
+Test_errro <- mean((prediction - VALID$Apps)^2)
+Test_errro
+```
+
+
+### Fit a PLS model on the training set, using cross-validation to support the choice of M. Report the test error obtained, along with the value of M selected.
+```{r}
+PLS <- plsr(Apps~. ,data = TRAIN, scale=T, validation = 'CV') 
+summary(PLS)
+```
+```{r}
+M2 <- PLS$ncomp # Number of components. 
+validationplot(PLS)
+```
+
+
+```{r}
+prediction2 <-  predict(PLS, VALID)
+Test_errro2 <- mean((prediction2 - VALID$Apps)^2)
+Test_errro2
+```
