@@ -1,0 +1,405 @@
+---
+title: "Homework_3"
+author: "Alberto De Benedittis"
+date: "19/5/2021"
+output:
+  word_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+__LIBRARIES USED__
+```{r}
+library('ggcorrplot')
+library("ggplot2")
+library("ggdendro")
+library("ape")
+library("FactoMineR")
+library("factoextra")
+library('mclust')
+```
+
+
+# EXERCISE  
+
+This homework deals with PCA and clustering. You should submit an RMarkdown file and a pdf file of the report. The RMarkdown file should reproduce exactly the pdf file that you will submit. The pdf file should be rendered directly from the RMarkdown (e.g. output: pdf_document) and not converted from any other output format.
+Note that:
+• your code should run without errors (except for minor adjustments such as file paths);
+• you should discuss/justify each choice that you make and provide comments on the results that you obtain.
+
+You will be working on a gene expression data set of 128 diseased patients belonging to two subtypes.
+The data are provided in the attached gene_expr.tsv file, containing expression for 12,625 genes and an additional column with patient subtypes. You will perform an unsupervised analysis, where you will assume no knowledge about these subtypes, so that you can use this information at the validation stage of the unsupervised learning techniques. To this aim:
+
+__1__ Load the data and perform a PCA. Produce a plot of the variance explained by the first components, and a scree plot.
+```{r}
+# IMPORT THE DATA SET 
+dataf <-  read.delim('gene_expr.tsv', sep = '\t', header = T)
+# DIMENSION OF THE DATA SET
+dim(dataf)
+# SUMMARY: BASICS INFORMATION ABOUT THE DATA SET
+# summary(dataf) we do not perform this command because this does not give us useful information as typically happens.
+```
+Before performing any analysis, it is always a good practice to explore the data set (e.g, computing a correlation plot, analyzing the mean and the distribution of the variables) in order to find some _hints_ that can make our analysis easier or to inform us. However, due to the dimension of our data set it is impossible to compute some of these operations or it does not have sense to compute them because it would be extremely difficult to evaluate the results. For example, if we want to compute the mean of each numerical variables, to see if there is the need to scale, it would be not possible for a human to considering all the average values at the same time.
+This being said, let's take a look at the data set.
+```{r}
+# VIEW
+View(dataf)
+```
+By looking at the dataset we notice that we have all categorical variables with the exception of the second one that, as stated above, indicates 2 possible sub-types of patient involved in the data gathering process. We also notice that the first column indicates the id of the patients. Hence we won't consider them during the PCA.
+
+Since we have to compute the PCA and the the hierarchical clustering we know that we must consider just the continuous variable. Hence, we have to perform our analysis considering all the rows from the third to the last columns of our data set. Hence, to write our code as more general as possible we will create two "indexes". 
+```{r}
+beginning <- 3 
+end <- ncol(dataf)
+```
+
+```{r}
+# PERFORMING THE PCA ON THE CONTINUOUS VARIABLES
+pr.out <- prcomp(dataf[,beginning:end], scale = T) # WE DECIDED TO SCALE THE VARIABLES
+```
+Now we want to explore the object `pr.out`: we start with the biplot:
+```{r}
+biplot(pr.out, scale = T)
+```
+The red arrows in the above plot indicate the first two principal component loading vectors. However, we cannot get any useful information from it.  <br>
+To get more useful information we decide to do the summary of `pr.out`.
+```{r}
+summary(pr.out)
+```
+From this summary we get many useful information: <br>
+1) The first component explains almost  18% of the variance; <br>
+2) The second component explains almost 10% of the variance;
+3) With 44 components we get a reasonable good level of explained variance (it is reasonable to believe that the 80% of the explained variance is a good threshold). <br>
+Now we want to visualize the contribution to the explained variance for the first 10 components.
+```{r}
+fviz_eig(pr.out, addlabels=TRUE, ylim=c(0, 30), main = 'Explained variance for each component')
+```
+From this plot we get what we have already seen in the summary: the first two components explain a good amount of variance, but all the others explain a really small portion of it.Thus, a relatively high number of variables (44) is needed to explain a sufficiently good amount of variance. <br>
+__2__ Make a few scatterplots of the first principal component score vectors. Plot the observations according to the given subtypes and assess to what extent the subtypes are similar to each other and are captured by the PCA.
+We will plot three scatterplots: 
+1) in the second the first score vector against the second;
+2) in the third the first score vector against the third;
+
+```{r}
+plot(pr.out$x[,1:2], col = ifelse(dataf$subtype == 'B', 'red', 'blue'), main = 'PC1 Vs PC2', ylab = 'Z1', xlab = 'Z2', pch=19)
+```
+By plotting the first two principal components score vectors, we notice that the distinction between the two subgroups is not clearly defined indeed, we see that there is an overlapping of points in the middle-left area of the above plot. <br>
+```{r}
+plot(pr.out$x[, c(1, 3)],col = ifelse(dataf$subtype == 'B', 'red', 'blue'), pch=19, xlab="Z1", ylab="Z3",main = 'PC1 Vs PC3')
+```
+By plotting the first and the third principal component score vector, we see that there is not a clear distinction between the two classes as well as before. Nevertheless, we can state that the observations belonging to the ' _T_ ' class (the blue ones) are more concentrated in the bottom area of the plot. 
+In both the plots,  PC1 Vs PC2 and PC1 Vs PC3 we have seen that the two classes are not well separated and so there is an overlapping between the observations of the two groups.  
+These results may suggest us that also the clustering won't do a perfect job because there is some noise that makes difficult to asses to which class an observation belongs.
+This is not hard to believe because with this huge data set there will be variables that makes everything cloudy, non-transparent. 
+__3__ Hierarchically cluster the patients using complete linkage and Euclidean distance as dissimilarity measure. Cut the dendrogram so as to have two groups. Evaluate the goodness of the clustering by comparing the groups with the given subtypes. Provide a numerical similarity measure. <br>
+
+Before doing the hierarchical clustering we decide to standardize our data set. In this way, each gene is on the same scale. Moreover, we have already scaled our data set when we have performed the PCA.  
+```{r}
+dataf[,beginning:end] <- scale(dataf[,beginning:end])
+```
+
+
+Now we create our hierarchical clustering with the _complete linkage_ and using as dissimilarity measure the _euclidean distance_. 
+```{r}
+hc.complete <- hclust(dist(dataf[,beginning:end]), method = 'complete')
+plot(hc.complete, main = 'Complete linkage cluster dendogram', xlab = '')
+```
+From a first look, we notice that the hierarchical clustering is able to identify two main classes.
+Now we cut the dendogram in order to show the two sub-groups and we also compute the number of observations for each subgroup. 
+```{r}
+cutted <-  cutree(hc.complete, 2)
+table(cutted)
+```
+
+Now we want to graphically represent the hierarchical clustering by defining the observations according to their groups using colors.  
+
+```{r}
+fviz_dend(hc.complete, main="Complete Linkage", cex=.7,
+          k=2, # cut in two groups
+          rect=TRUE,
+          palette="aaas")
+```
+By carefully looking at the above plot we notice that the two classes ( _B_ and _T_) join together only at the root of the dendogram. This means that according to this hierarchical clustering the two classes are quite distinguishable. However, we already notice that the clustering is not perfect because the distribution of the observations among the two classes does not reflect the real one. 
+
+__EVALUATE THE GOODNESS OF THE CLASSES__
+To evaluate the goodness of the clustering by comparing the groups with the given sub types and to provide a numerical similarity measure a good choice is typically the __Adjusted Rand Index__ ( __ARI__ ).
+The __ARI__ is frequently used in cluster validation since it is a measure of agreement between two partitions: one given by the clustering process and the other defined by external criteria (in our case, we know from the beginning the true division in classes.)
+The formula for computing the __ARI__ is the following: <br>
+$$ARI=\frac{RI - \textrm{expected }RI}{\max(RI) - \textrm{expected }RI} $$
+and from that we get that the __Adjusted Rand Index__ may only yield a values between 0 and +1 however, the __ARI__ can yield negative values if the index is less than the expected index.
+
+Before computing this measure of goodness of the clustering we decide to show the values that we get from the __ground truth__ which is the column vector `dataf$subtype` and the ones that we get from the clustering  
+```{r}
+print('Ground Truth')
+table(dataf$subtype)
+print('Complete H-Clustering \n')
+table(cutted)
+```
+As we can see, we notice that the complete linkage hierarchical clustering has misclassified 20 observations out of 128. Thus, we do not expect an high value of the __ARI__. 
+Now we are ready to compute the __ARI__ and numerically quantify the ' _accuracy_ ' of this classification:
+```{r}
+truth <- dataf$subtype
+mclust::adjustedRandIndex(truth, cutted)
+```
+As expected, the __ARI__ is quite low since 20 of the 128 observations were misclassified. Hence, we can deduce that the results provided by the above cluster are close to the random partition. Hence, we want to improve the perfromance of our clustering algorithm.  
+
+__3__ See if you can improve the results. For example, repeat the procedure using correlation as dissimilarity measure, and with single or average linkage. Discuss the results and pick the combination of dissimilarity measure and linkage method that works best. <br>
+
+As suggested, to improve the performances of the clustering we may start by redefine what it means for two or more observation to be similar or different. In the first trial, we used the _euclidean distance_, now we want to see if creating the clustering with __correlation__ as dissimilarity measure improves the performance. The correlation-based distance considers two observations similar if their features are highly correlated, even tough the observed values may fall apart in terms of _Euclidean distance_. Furthermore, __correlation-based distance__ focuses on the shapes of observation profiles rather than their magnitude. 
+Let's compute the __correlation-based distance__. 
+```{r}
+cor.b.dis <-  as.dist(1-cor(t(dataf[beginning:end])))
+```
+Now that we have the correlation-based distance we can compute and plot a new hierarchical clustering.
+```{r}
+hc.comp.cor <- hclust(cor.b.dis, method = 'complete')
+plot(hc.comp.cor, main = 'Complete linkage cluster dendogram with \n correlation-based distance', xlab = '')
+```
+Now as before we want to cut the dendogram in order to have two clusters.
+```{r}
+cut.cor <-  cutree(hc.comp.cor, 2)
+table(cut.cor)
+```
+Just from this first representation of the results we may hypothesize an improvement in the classification. Indeed, the number of observations in each group is closer then before to the ground truth. However, this is not enough for our purpose. Before continuing the comparison between the two clustering we decide to plot the new clustering highlighting the difference among the groups with colors as did before. 
+
+```{r}
+fviz_dend(hc.comp.cor, main="Complete Linkage \n correlation based", cex=.7,
+          k=2, # cut in three groups
+          rect=TRUE,
+          palette="aaas")
+```
+
+As before, we can clearly see that  two classes are well separated and  they join together only at the root. Hence, the clustering shows that the two classes are quite different. 
+However, to compare the goodness of this clustering with the previous one we compute its __ARI__.
+
+```{r}
+mclust::adjustedRandIndex(truth, cut.cor)
+```
+The __ARI__ of this new clustering is positive but quite low. As a matter of fact, the __ARI__ of this new clustering is lower than the one of the first clustering. Hence, we may conclude that, in this case, there is no improvement by using the correlation as dissimilarity measure. <br>
+Since our results until now are quite poor we can try to change the way we measure the dissimilarity between two groups of observations, the _linkage_. Indeed, we know from the theory that there exist many different types of _linkage_, the most used ones are: _complete_ (the one that we have used until now), _average_, _single_ and _centroid_. 
+Typically, _average_ and _complete_ are preferred over _single_ linkage, as they tend to yield more balanced dendograms. So, we could also skip to use the single linkage if the results are quite satisfying with the _average linkage_. In addition, a good choice would also be the _centroid linkage_ because it is frequently used in __genomics__ and, this is the case. However, with this type of _linkage_ an __inversion__ may occur with the consequence that two clusters are fused at height below either of the individual cluster in the dendogram. All this may lead to hard to interpret results and representation. <br>
+Let's start by computing the clustering with the _average linkage_
+```{r}
+hc.avg <- hclust(dist(dataf[,beginning:end]), method = 'average')
+fviz_dend(hc.avg, main="Avereage Linkage", cex=.7,
+          k=2, # cut in three groups
+          rect=TRUE,
+          palette="aaas")
+```
+```{r}
+cut.avg <- cutree(hc.avg, 2)
+table(cut.avg)
+```
+From these results we notice that there is not any improvement by applying the _average linkage_ to the `hclust`.
+The dendogram shows a dendogram where there are many ' _sub-trees_ ' made by just few observations. Indeed, by zooming and looking carefully the dendogram we spot something that we do not like. After the first split we have two "main" groups, a huge one and another one made by just one observation. 
+This is also visible when we cut the three at the height of two and  execute the `table()` function on the cutted dendogram. 
+Hence we stop our analysis on this clustering which did a very poor job. <br>
+Let's see if creating the dendogram with the _average linkage_ and with correlation as dissimilarity measure leads to different results. 
+```{r}
+hc.avg.cor <- hclust(cor.b.dis, method = 'average')
+fviz_dend(hc.avg.cor, main="Avereage Linkage \n correlation-based", cex=.7,
+          k=2, # cut in three groups
+          rect=TRUE,
+          palette="aaas")
+```
+```{r}
+cut.avg.cor <- cutree(hc.avg.cor, 2)
+table(cut.avg.cor)
+mclust::adjustedRandIndex(truth, cut.avg.cor)
+```
+As we can see from both the dendogram and the table, there is not such improvement. In fact, the results are quite far from the ground truth. 
+Nevertheless, the _average linkage_ used together with the _correlation_ as dissimilarity measure leads to a small improvement of the performance. Indeed, the __ARI__ associated to this clustering is the higher until now but it is still too low to stop our analysis.<br>
+
+Now we want to test if applying the _centroid linkage_ can help us to produce a more accurate clustering. 
+```{r}
+hc.cen <- hclust(dist(dataf[,beginning:end]), method = 'centroid')
+fviz_dend(hc.cen, main="Centroid Linkage", cex=.7,
+          k=2, # cut in three groups
+          rect=TRUE,
+          palette="aaas")
+```
+```{r}
+cut.cen <- cutree(hc.cen, 2)
+table(cut.cen)
+mclust::adjustedRandIndex(truth, cut.cen)
+```
+Despite the __ARI__ associated to this clustering is not the lowest we are prone to discard this method because the results shown by the dendogram are less readable compared to previous models. 
+
+Before moving on we want to make a last attempt by considering the _single linkage_. 
+```{r}
+hc.sing <- hclust(dist(dataf[,beginning:end]), method = 'single')
+fviz_dend(hc.sing, main="Single Linkage", cex=.7,
+          k=2, # cut in three groups
+          rect=TRUE,
+          palette="aaas")
+```
+```{r}
+cut.sing <-  cutree(hc.sing, 2)
+table(cut.sing)
+mclust::adjustedRandIndex(truth, cut.sing)
+```
+The results provided by the clustering with the _single linkage_ are almost identical to the ones obtained with the _centroid linkage_.
+We can conclude after this brief analysis that we are not satisfied with our results. 
+
+__4__ Another way to possibly improve the results is through gene filtering:
+– For example, from the full dataset select the top N (e.g., N = 200) genes that differ the most across all samples, based on PCA; repeat the hierarchical clustering; cut the dendrogram to have two groups; evaluate the results.
+– A different approach that is popular in gene expression analysis is to keep only the most variable genes for downstream analysis. Since most of the 10K genes have low expression or do not vary much across the experiments, this step usually minimizes the contribution of noise. An unsupervised technique would then aim to identify what explains this variance. Start again from the full dataset and keep only genes whose standard deviation is among the top 5%; perform PCA and produce a scatterplot of the first two principal components scores, coloring observations by subtype; repeat the clustering/cutting/evaluation procedure. 
+
+Let's try to follow the first hint and select the top N genes that differ the most across all samples, based on PCA. 
+Thus we want to build a new data set with these top N genes.  
+A simple method to extract the results, from variables, from a PCA output is to use the function `get_pca_var()`. This function provides a list of matrices containing all the results for the active variables.
+```{r}
+var <- get_pca_var(pr.out)
+```
+`var$contrib`contains the contributions (in percentage) of the variables to the principal components. The contribution of a variable (var) to a given principal component is (in percentage) : (var.cos2 * 100) / (total cos2 of the component).
+```{r}
+most_differing_genes <- head(var$contrib, 200)
+names_most_variating <- rownames(most_differing_genes)
+```
+We decide to select, as suggested, the first 200 genes. Then, we are able to create our `new_df`. 
+```{r}
+new_df <- dataf[,c(names_most_variating)]
+```
+Now we are ready to see how the hierarchical clustering will perform on this new reduced data set. We may expect an improvement in the performance of the clustering because we are reducing the variables and we expect that there would be less 'noise'. 
+Firstly, we will perform the hierarchical clustering with  _complete linkage_ based on _euclidean distance_.
+```{r}
+hc.com.red.pc <- hclust(dist(new_df), method = 'complete')
+# we create the cutted object 
+cut.cmp.red.pc <- cutree(hc.com.red.pc, 2)
+table(cut.cmp.red.pc)
+fviz_dend(hc.com.red.pc, main="Complete Linkage", cex=.7,
+          k=2, # cut in two groups
+          palette="aaas")
+```
+Looking at both the results of the table and the dendogram we may think that there is an improvement in the performances with this new reduced data set. Indeed, the results provided by `cut.cmp.red.pc` are closer to the results shown by the ground truth. Nevertheless, to confirm our intuition we need to compute the __ARI__.  
+```{r}
+mclust::adjustedRandIndex(truth, cut.cmp.red.pc)
+```
+As we can see, the __ARI__ is negative. This means that the results of this classification are very poor. Indeed, a negative __ARI__ occurs rarely and it tells that the clustering performs worse than randomly assignment of the class.
+The first thing that we may do is to build the dendogram using the correlation-based distance instead of the euclidean one
+```{r}
+hc.com.red.pc.cor <- hclust(as.dist(1-cor(t(new_df))), method = 'complete')
+#plot
+fviz_dend(hc.com.red.pc.cor, main="Complete Linkage correlation based", cex=.7)
+```
+By looking at this new dendogram we may hypothesize a worse result because we notice that the first split has created a huge group on the right and a too small group of observations on the left.
+Let's see if our intuition is right. 
+```{r}
+# we create the cutted object  
+cut.cmp.red.pc.cor <- cutree(hc.com.red.pc.cor, 2)
+table(cut.cmp.red.pc.cor)
+fviz_dend(hc.com.red.pc.cor, main="Complete Linkage correlation based", cex=.7, k=2, # cut in two groups 
+          palette="aaas")
+mclust::adjustedRandIndex(truth, cut.cmp.red.pc.cor)
+```
+As we can see, there are is higher but negative. So, we tend to prefer the clustering done with the _euclidean distance_. 
+To conclude, we do not go further in our analysis with this new data set because we do not expect any improvement by changing the linkage method since there was any with the full data set. As a general final comment, we would have expected an increase of the performance with this reduce data set but there could be at least two factors that could have negatively  affected the results: <br>
+1) the variance explained by the first 200 genes is not enough for our purpose (the performance of the cluster would definitely increase with an higher number of genes); <br>
+2) the data is still built on the base of the PCA that as we have seen as its limits. <br>
+
+To prove what we have just said we re-do the above computation considering an higher number of genes, let's say 600. 
+```{r}
+most_differing_genes <- head(var$contrib, 600)
+names_most_variating <- rownames(most_differing_genes)
+new_df <- dataf[,c(names_most_variating)]
+```
+
+```{r}
+hc.com.red.pc <- hclust(dist(new_df), method = 'complete')
+# we create the cutted object 
+cut.cmp.red.pc <- cutree(hc.com.red.pc, 2)
+table(cut.cmp.red.pc)
+fviz_dend(hc.com.red.pc, main="Complete Linkage", cex=.7,
+          k=2, # cut in two groups
+          palette="aaas")
+
+```
+
+```{r}
+mclust::adjustedRandIndex(truth, cut.cmp.red.pc)
+```
+As we can see this new clustering performed much better than the previous one. Moreover, it is the most performing one until now. 
+
+Now, we move on and we consider the second hint given: we now want to create a second reduced data set where we keep only the most variable genes for downstream analysis.
+```{r}
+dataf <-  read.delim('gene_expr.tsv', sep = '\t', header = T)
+top_600 <- as.matrix(head(sort(apply(dataf[,-c(1,2)],2, var),decreasing = T), n = 600))
+colnames(top_600) <- 'variance'
+#rownames(top_200)
+new_df2 <-  dataf[, c(rownames(top_600))]
+new_df2 <- scale(new_df2)
+```
+Now that we have our `new_df2` we can: <br>
+* perform PCA 
+* produce the scatterplot of the first two components scores, coloring observations by subtype;
+* repeat the clustering, cutting and evaluation procedure.
+```{r}
+pr.out2 <- prcomp(new_df2, scale = T)
+summary(pr.out2)
+```
+From the summary of the PCA we get that: <br>
+* the first component explains the 18% of the variance; <br>
+* the first six components explain almost half of the total variance; <br>
+* the 75% of the variance is explained by 23 components. <br>
+Now we want to plot the results as we did before.
+```{r}
+fviz_eig(pr.out2, addlabels=TRUE, ylim=c(0, 25), main = 'Explained variance for each component')
+```
+From this representation we can better appreciate the importance of the first component compared to the others. 
+Now we want to plot the scatterplot of Z1 vs Z2, the two first principal components scores vectors and focusing on the two classes of observations.
+```{r}
+plot(pr.out2$x[,1:2], col = ifelse(dataf$subtype == 'B', 'red', 'blue'), main = 'PC1 Vs PC2', ylab = 'Z1', xlab = 'Z2', pch=19)
+```
+The results that we obtained is in line with our expectations. Indeed, by reducing the data set, we have discarded all the genes' information that produces noise inside the data set. Hence, we can clearly see the two groups of observations. Moreover, we also notice that there is no overlapping between the two groups and that they are well separated. 
+Now we are ready to compute the dendogram associated with this new reduce data set. We are quite confident that the clustering will do a relatively good job. 
+```{r}
+hc.com.red.2 <- hclust(dist(new_df2), method = 'complete')
+# we create the cutted object 
+cut.cmp.red.2 <- cutree(hc.com.red.2, 2)
+table(cut.cmp.red.2)
+fviz_dend(hc.com.red.2, main="Complete Linkage", cex=.7,
+          k=2, # cut in two groups
+          palette="aaas")
+```
+The results are quite promising since the output of the `table(cut.cmp.red.2)` are equal to the ones of the ground truth. 
+Let's give a quantitative measure of the goodness of this clustering with the well-known __ARI__.
+```{r}
+mclust::adjustedRandIndex(truth, cut.cmp.red.2)
+```
+The __ARI__ shows a __perfect agreement__. This clustering correctly classified the observations in the reduced data set.  
+Since the results is completely satisfying we stop here our analysis also because, we have experienced no improvement by changing the linkage or the way we compute the distance between the observations. 
+__5__ What do you observe and what conclusions do you make?
+Before the final comment on the results of our analysis we want to sum up the results of the different __ARIs__ into a table. 
+```{r}
+type_of_clustering <-  c('Complete & Euclidean', 'Complete & Correlation', 'Centroid', 'Single', 'Complete & Euclidean Red1', 'Complete & Euclidean Red2')
+ARIs <-  c()
+
+ARIs <- append(ARIs,mclust::adjustedRandIndex(truth, cutted))
+ARIs <- append(ARIs,mclust::adjustedRandIndex(truth, cut.cor))
+ARIs <- append(ARIs,mclust::adjustedRandIndex(truth, cut.cen))
+ARIs <- append(ARIs,mclust::adjustedRandIndex(truth, cut.sing))
+ARIs <- append(ARIs,mclust::adjustedRandIndex(truth, cut.cmp.red.pc))
+ARIs <- append(ARIs,mclust::adjustedRandIndex(truth, cut.cmp.red.2))
+results <- as.data.frame(ARIs)
+rownames(results) <- type_of_clustering
+colnames(results) <- 'ARI'
+results
+```
+In this table are represented the ARIs associated with the different clustering.
+As we can see, the performances of the clustering with the full data set are quite low despite the _linkage_ and the _dissimilarity measure_ used.
+On the other hand, we notice an improvement in the performance when we reduce the variables considered in the analysis and  consequently the noise inside the data set. As a matter of fact, the clustering correctly classify the observation when we consider the data set with only the most variable genes. 
+After this brief recap, it seems appropriate to retrace all the steps of our analysis. <br>
+
+The aim of this exercise was to investigate and get the best out of the __clustering__ an unsupervised learning technique used to find hidden subgroups inside a data set. Actually, we already knew the hidden groups and so our main objective was to see how the __clustering__ would have behaved.    
+The first step of our analysis as usual involved the data exploration however, proceeding with the usual computations was not convenient due to the dimension of our data frame. Thus, we have overcame this issue by computing a PCA analysis that serves also as a tool for data visualization. Indeed, we have examined the two-dimensional scatterplots of the data based on the first principal components. Actually, looking at the low dimensional representation of the data helped us to understand that although we were considering just the 'first' components, our data frame was 'dirty'/'cloudy' and it was very difficult to distinguish between the two hidden groups. As a matter of fact, in the first two scatterplots there is an overlapping of points of the two classes that makes it difficult to make a clear right division.
+This was also evident when we have tried to compute the __ARI__ of the clustering made with this data set. Indeed, we have seen very low performances also after having changed the _linkage method_ and the _dissimilarity measure_ among the observations. 
+
+Hence, the next move was centered on the data set with the aim to reduce it. Indeed, clustering methods are not very robust to perturbation of the data so, if we remove a subset of observations the clusters obtained are quite different. As a matter of fact, we have manipulated the original data set in two different ways: in a first attempt we have selected the top 200  genes that differ the most across all samples, based on PCA. However, this does not lead to an improvement. Probably, the number of genes considered was too low and thus, unable to explain a reasonable amount of variance that would have helped to find the differences among the observation of the two classes. In addition, during this step of the analysis we have faced an unexpected result: a  __a negative value of the ARI__. This result is quite strange especially if we take a look at the formula: it is impossible to have a negative denominator and so the negative value comes from the numerator. Indeed, a negative ARI says that the agreement is less than what is expected from a random result. This means the results are 'orthogonal' or 'complementary' to some extend. With this we mean that the clustering results are more different than random i.e. there is a _pattern_ to the differences.
+
+
+As consequence, we have tried to increase the number of genes considered in this new data set. This lead to an improvement of the performances of the hierarchical clustering but the results was still not completely satisfying. The second attempt involved an approach that is frequently used in gene expression analysis. With this method we only keep the most variables genes. We made this choice because many genes do not vary much among the different observations and others have low expression. This step usually minimizes the contribution of noise and it worked well also in this case. In fact, the clusters obtained with this new reduced data set were completely satisfying because we get an ARI = 1 which means perfect agreement between the groups obtained from the clustering and the groups defined by the ground truth. These clusters were built with the _complete linkage and the euclidean distance as dissimilarity measure_. 
+To conclude, what we have seen is that the hierarchical clustering as unsupervised learning technique is not very robust and may vary a lot with changes of the _linkage_, the _dissimilarity measure among variables_ and in the data set. We are satisfied with the results just because we knew from the beginning the real division of the groups but without it it would have been really difficult to state which was the best clustering. Lastly, we want to steer the attention to the reduction of the data set that has been the key factor to de-noising the data set and allows a better analysis of the data. 
+
