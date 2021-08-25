@@ -1,0 +1,720 @@
+---
+title: "Homework 2"
+author: "Alberto De Benedittis"
+date: "25/4/2021"
+output:
+  word_document: default
+  html_document:
+    df_print: paged
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::knit_hooks$set(crop = knitr::hook_pdfcrop)
+defaultW <- getOption("warn") 
+options(warn = -1)
+```
+
+```{r message=FALSE}
+
+library(plotmo)
+library(glmnet)
+library(FactoMineR)
+library(corrplot) 
+library(psych)
+library(factoextra)
+library(tree)
+library(randomForest)
+library(gbm)
+```
+
+# Exercise 1  
+
+## Consider the “fat” dataset provided for this Homework (tab-separated fat.tsv). It contains percent body fat, age, weight, height and body circumference measurements for 252 male subjects. Our goal is to predict body fat (variable y in the dataset) from the other explanatory variables.
+<br>
+### Load the data and perform a first exploratory analysis
+<br>
+The first thing to is to import the the data set and analyzing it. 
+```{r}
+#grasso <-  read_tsv('fat.tsv')
+grasso <-  read.csv('fat.tsv', sep = '\t')
+```
+
+```{r}
+dim(grasso)
+head(grasso)
+```
+```{r}
+summary(grasso)
+```
+<br>
+The data set is composed by 252 observation and 16 variables. 
+Thanks to the command `summary()` we are able to see the main characteristic of our data set. 
+The first good thing that we notice is that we do not have missing information (no _NAs_). 
+Another interesting thing that we can spot from this summary is that all the variables are continuous and they have different scales. 
+For example, the values of the category `density` range between 0 and 1 while the values of the category `weight` range between almost 100 and 300. Hence, we will probably need to standardize our variables in order to make better predictions. 
+Now we want to investigate if some of the variables are correlated among each other. We expect that there will be an high level of correlation between the variable because all the predictors tend to spot characteristic related to people with an high percentage of body fat.
+```{r}
+corp1 <- cor(grasso, use="complete", method = "pearson")
+corrplot(corp1, method = "color", order = "AOE", type="lower") 
+corrplot(corp1, method = "number", order = "AOE", type="lower")
+```
+<br>
+Here we have represented two correlation plot, they represent the same information but we have decided to plot the first graph because it is aesthetically pleasant while the second is more informative since it provides the actual value of the correlation between variables. <br>
+These two plots give us really useful and interesting information: <br>
+1) The variable `siri` is perfectly  and positively correlated to the response variable `y` <br>;
+2) The variable `density` is almost perfectly and negatively correlated to the response variable `y` <br>;
+3) The variables `abdomen` and `chest` are also highly correlated to the response variable. <br>
+4) In general, there is an high degree of correlation among the variables.
+
+This info is really useful and allows us to start to hypothesize which are the determinant variable for the prediction of y. We are quite sure that the variable  `siri` will play an important role. 
+
+Now since we have many predictors we want to investigate if we can group some of the variables in some macro-categories. 
+This is useful also because in this way we can better understand the previous statements regarding the high degree of correlation among the variables.
+```{r}
+PCAdf1 <- PCA(corp1, scale =TRUE)
+fviz_pca_var(PCAdf1, col.var = "cos2",
+             gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07")
+)
+```
+Here we have decided to plot our variables as we have to do a PCA. We did so because this helps us to visualize how the variables and their directions. Indeed, we confirm that `siri` and `y` go in the same direction (and have the same 'intensity') while `density` goes in the exact opposite direction. On the other hand, all the other variables tend to be concentrated in the upper right corner and so we can assume summarize the effect of all these variables as a unique one. Then there are the variables `age` and `height` that are less correlated to `y`.
+
+
+### Split the data into train/test
+
+Now we have to create two new data sets: one will be the training data set that will be used to create our model while the other will be the validation set which will be used to test our models and understand how good are the predictions. 
+To do so we need to call the function `sample()` to choose randomly half of the observations of the original data set (we choose half of the observations to constitute the train set and the validation set but we could  have also consider a different proportion for the train set and the validation set, but split in two halves is a convention so we decide to follow it). When we call the function `sample()` we have to be careful because as said before it choose _randomly_. Hence, we need to set a seed in order to make this random operation repeatable.   
+```{r}
+set.seed(99)
+train_ind <-  sample(nrow(grasso), nrow(grasso)*0.5)
+train <-  grasso[train_ind,]
+test <-  grasso[-train_ind,]
+```
+### Perform least squares regression to predict y from the other variables. Discuss the results of the model and compute the test MSE.
+Now, we want to make our first model: a linear regression model. 
+```{r}
+lm.fit <-  lm(y~., data = train)
+summary(lm.fit)
+```
+The result of this linear model looks quite good. Indeed, we can consider the __Adjusted R-Squared__ which is one of the criteria used to assess the quality of a model. Hence, we both recall the formulas of the __R-squared__ and the one of the __Adjusted R-Squared__: <br>
+$$ R^2 = 1 - RSS/TSS$$ (where TSS is the total sum of squares for the response); <br>
+$$ Adjusted R^2 = 1 - \frac{RSS/(n-d-1)}{TSS/(n-1)} $$
+
+Looking at the formula we easily notice that having an $Adjusted R^2 = 0.9995$ means having a really good model.
+Looking more in the details of the summary we look at the coefficients and we notice that many of them are not significant. 
+Indeed, the most important predictors according to the p-value is `siri` (that should be a _body composition equation_ that is used for calculating the percentage of body fat, indeed `siri` could be also defined by the following equation $\% body fat = (495/density)-450$). 
+The second most important predictor is `density`. As we have seen in the PCA plot and during the analysis of the correlation among variables, density is negatively correlated to the body fat and hence it does not look strange to see it between the relevant predictors. Moreover, as we have just discovered, it is also used to estimate the percentage of body fat in the `siri` formula.
+The third predictor with a low p-value is `biceps` that should indicate the circumference of the biceps.
+The last relevant predictor for our analysis is  `knee` (which should refer to knee pain. Indeed, this look quite reasonable since people with an high percentage of fat typically has this kind of problem). 
+However, we know that the importance of the predictors could be biased due to the the way we have created our train set and validation set. This could be the case also because we have relatively few observation and an high number of predictors. Indeed, we won't be surprised if changing the seed will also change the relevant predictors ( with the exception of `siri` which has a really low p-value). 
+Hence, we could consider a different seed and see how the p-values of the predictors change. <br>
+It would be interesting doing some hypothesis based on the data that we have. For example, many of the variables that we have refers to the circumferences of different body parts such as chest and biceps. These predictors could be reasonably good estimators for detecting people with an high percentage of bodyfat. However, there could also be some outliers that could soften the predictive power of these variables. For example, athletes such as bodybuilders or football players could have really high values for the above mentioned variables but also a really low level of body fat but, we imagine that in a small sample as `train` it is rare to find an observation with these characteristic ( high values for chest and biceps but low level of body fat).
+```{r}
+bbt <-  train[train$chest > mean(train$chest) & train$biceps > mean(train$biceps) & train$y < mean(train$y), ]
+bb <- grasso[grasso$chest > mean(grasso$chest) & grasso$biceps > mean(grasso$biceps) & grasso$y < mean(grasso$y), ]
+```
+Although the previous one was just a reflection, we have found that actually there exist a small class of individuals with the following characteristic: circumferences of biceps and chest over the average and body fat under the average (8% of the people in the data set). This could be the reason why these predictors could be sometimes not very accurate to predict if a person given some characteristic has or not an high percentage of fat. <br>
+Now we want to test some of the previous assumptions creating a new linear model with another random sample.
+
+```{r}
+set.seed(11)
+train_ind2 <-  sample(nrow(grasso), nrow(grasso)*0.5)
+train2 <-  grasso[train_ind2,]
+test2 <-  grasso[-train_ind2,]
+lm.fit2 <-  lm(y~., data = train2)
+summary(lm.fit2)
+```
+As we expected there are some differences between this linear model and the previous one. Firstly, here the only important predictor is `siri` and the others have high p-values or as for `biceps` and `forearm` close to the 5%. <br>
+To conclude, this _excursus_ was meant to explain how the results of a simple linear model could be affected by randomness and also to try to give some explanation regarding the results and to explain why some variables could not be considered or considered with caution.<br>
+Now we briefly continue the analysis of the linear model plotting it. 
+
+```{r}
+par(mfrow = c(2,2))
+plot(lm.fit)
+```
+Let's start by analyzing the _Residual vs Fitted_: this plot represent the residuals fro each predicted value. The y values are spread around 0 for each value of x without showing any trend hence we can conclude that the model structure is probably correct.
+The next plot is the _Normal Q-Q_. This is the QQ plot of residuals vs normal distribution. The points lie on a line so we can conclude that the assumption of normal distribution is not debatable. 
+Then we have the _scale location_ plot. Here we have the standardized residuals vs the predicted values. From this plot we can deduce that the hypothesis of homoscedasticity may hold.
+Lastly, we have the _residuals vs leverage_. From this plot we can detect if there are some dangerous outliers or not. We do not spot any warning situation
+
+Now, we are curious to plot the regression line and together with the plot of `y` and `siri`. 
+```{r message=FALSE}
+plot(train$y ~ train$siri, main = '% of body fat Vs SIRI index', ylab = '% of body fat', xlab = 'SIRI')
+abline(lm.fit, col = 'red', lwd = 3)
+```
+Although we are using only one out of the 16 predictors, we notice that there is a strong relation between `SIRI` and the percentage of body fat. Indeed, the most interesting thing is that the regression line is close and parallel to the distribution of the values of `y` in relation to `Siri`. Hence, we can justify the small shift with the presence of the other relevant predictors. <br>
+Now we are curious and we want to further investigate the relation between `siri` and the percentage of body fat `y`. 
+```{r}
+lm.fit_only_siri <-  lm(y~ siri, data = train)
+summary(lm.fit_only_siri)
+```
+Here we see the results of the linear regression when we consider only `siri` as predictor. The result confirms our hypothesis. Indeed, we notice that there is almost no change in the __Adjusted R-squared__.
+We now decide to plot this new regression line with the plot of `y` against `siri`.  
+```{r}
+plot(train$y ~ train$siri, main = '% of body fat Vs SIRI index', ylab = '% of body fat', xlab = 'SIRI')
+abline(lm.fit_only_siri, col = 'red', lwd = 3)
+```
+The result is impressive, the two lines are the same. 
+
+Now we are ready to see how the two models perform.
+```{r}
+lm.pred <-  predict(lm.fit, test, type = 'response')
+MSE.lm <- mean((lm.pred-test$y)^2)
+MSE.lm
+```
+
+```{r}
+lm.pred2 <-  predict(lm.fit_only_siri , test, type = 'response')
+MSE.lm2 <- mean((lm.pred2-test$y)^2)
+MSE.lm2
+```
+In both cases we have obtained a quite low value for the mean standard error. We expected a result like this since we have previously obtained two models with high values for the __Adjusted R-squared__. 
+We also notice that the model with only `siri` as predictor performs better than the one with all the predictors.
+
+
+### Fit a ridge regression model on the training set, choosing λ by cross-validation. Report the test error.
+As we have seen so far, the linear model has distinct advantages in terms of inference and it is often competitive in relation to non linear methods. <br>
+However, we want to try some methods that should help to improve the performance of the linear model by replacing plain least squares with some alternative fitting procedures. 
+Indeed, we want to use the shrinkage methods. They reduce the prediction error by modifying the least squares criterion by constraining/shrinking the coefficients. This lead to an improvement in the model because in this way it is possible to reduce the variance. <br>
+Let's first consider the __ridge regression__ <br>
+__Ridge regression__ is similar to least squares but the coefficients are estimated by minimizing a slightly different quantity. Indeed, the _ridge regression coefficients estimates_ $\hat{\beta^R}$ are the values that minimize the following quantity:
+$$RSS  +\lambda \displaystyle\sum_{j=1}^{p} \beta^2_j$$
+where $\lambda$ is our tuning parameter and the right right part of the formula is called _shrinkage penalty_. Obviously, when $\lambda = 0$ the ridge will simply produce the least squares estimates. Hence, the main task when we do a ridge regression model is to find the best value of $\lambda$. 
+```{r}
+# ridge regression convert to model matrices
+x_train <-  model.matrix(y ~., train)[,-1] # the shrinkage penalty is applied to beta1,....betap but not to the intercept beta 0
+x_test <-  model.matrix(y ~., test)[,-1]
+# labels
+y_train <- train$y
+y_test <-  test$y
+```
+
+```{r}
+library(glmnet)
+grid <-  10^seq(10, -2, length =100) # We have chosen to implement the function over a grid of values ranging from lambda = 10^10 to lambda = 10^-2, essentially covering the full range of scenarios from the null model containing only the intercept, to the least squares fit. 
+ridge.mod <-  glmnet(x_train,y_train,alpha = 0, lambda = grid)
+plot_glmnet(ridge.mod, xvar = 'lambda')
+plot_glmnet(ridge.mod, xvar = 'lambda', ylim = c(0,2)) # zooming to better visualize the different variables
+rig.fit <-  cv.glmnet(x_train, y_train, alpha = 0, lambda = grid)
+plot(rig.fit)
+# optimal lambda
+lambda <-  rig.fit$lambda.min
+pred_ridge <-  predict(ridge.mod, s = lambda, newx = x_test)
+MSE_ridge <- mean((y_test - pred_ridge)^2)
+print(MSE_ridge)
+
+```
+In this step of our analysis we have computed a ridge regression model.
+In a first instance, we have computed the ridge model considering different values of lambda in order to cover the full range of scenarios. Then we have plotted the first graph where we visualize the coefficients as a function of $\lambda$. From this plot we see that almost all the variables are close to zero expect `density`. Indeed, the value of this coefficients tends to decrease reaching is maximum at almost -150 and only when the value of $\lambda$ is big it becomes close to zero. 
+It is also interesting zooming the upper left corner of the plot. Here we can see all the variables in details. Firstly, we notice that no one of the variable is zero (as we expected). Secondly, we see that for small values of $\lambda$, the value of `siri`'s coefficient is bigger than the other predictors, a part from the already mentioned `density`.
+<br>
+The following step is choosing the tuning parameter $\lambda$ through cross-validation. We have created the third plot where we have the MSE against the log of lambda and in the upper part of the graph we have the number of predictors considered for each value of $\lambda$, this means that none of the predictors has been shrunken towards zero. From the above plot we notice the the smallest value of the MSE is reached when $log(\lambda) = -2$ so, when $\lambda = 0.01$ which is the optimal value of the tuning parameter. 
+Then we recompute the model with the best value for $\lambda$ and we compute the MSE which is equal to 0.03744364 which is slightly higher than the one obtained with the prediction of the linear model.
+
+Now that we have estimated the best lambda we refit our regression model on the full data set and we examine the coefficients estimated
+```{r}
+x <-  model.matrix(y ~., grasso)[,-1]
+y <-  grasso$y
+out_full_mod <-  glmnet(x,y,alpha = 0)
+predict(out_full_mod, type = 'coefficients', s = lambda)
+```
+Looking at the different estimates of the coefficients as first thing we notice, as expected, that none of the coefficients are zero indeed, regression does not perform variables selection. The second thing that we notice is that the coefficient with the highest value is `density`. This result confirms what we have discovered before: `density` is definitely correlated with `y`. The other predictor with an high value for its coefficient is `siri`, the other predictor that seems to reflect very well the response variable `y`. <br>
+However, as a general comment we are satisfied because the most important predictors are still the same and this confirms our intuition until now. In addition we may think that for what concerns the other variables there could be an influence due to the seed.<br>
+Now we want to check whether the __lasso__ can yield a more accurate or more interpretable model than ridge regression.
+Indeed, the __Lasso__ is an alternative to the ridge. <br> 
+The lasso coefficients $\hat{\beta ^L}$ are the values that minimize the following formula:
+$$RSS  +\lambda \displaystyle\sum_{j=1}^{p}|\beta_j|$$
+As we can see the only difference between the lasso and the ridge is in the penalty. In the case of the lasso the penalty has the effect of forcing some of the coefficients estimates to be exactly equal to zero when $\lambda$ is sufficiently large. From this we get two important information: firstly, the lasso does variable selection, secondly, depending on the value of lambda the lasso can produce a model involving any number of variables.
+Now we start creating our model. 
+```{r}
+lasso.mod <-  glmnet(x_train, y_train, alpha = 1 , lambda = grid)
+plot_glmnet(lasso.mod, xvar = 'lambda', label = T)
+plot_glmnet(lasso.mod, xvar = 'lambda', label = T, ylim = c(0,2)) # Zooming
+```
+As for the ridge we decide to plot the values of the coefficients against the value of $log\lambda$. 
+We can see from the coefficient plot that depending on the choice of the tuning parameter, some of the coefficients will be exactly equal to zero.
+More specifically, we notice that just two variables are different from zero: `siri` and `density`. <br>
+Also in this case we want ot find the best value of $\lambda$ via cross-validation. 
+```{r}
+cv.out  <-  cv.glmnet(x_train, y_train, alpha = 1)
+plot(cv.out)
+bestlam <-  cv.out$lambda.min
+lasso.pred <- predict(lasso.mod, s = bestlam, newx = x_test)
+MSE_lasso <- mean((lasso.pred - y_test)^2)
+MSE_lasso
+```
+From the plot we can see that the least value of the Mean-sqaured error is obtained with a value of $log\lambda = -0.8$ so when the value of $\lambda = 0.1474984$. Another interesting thing that we can spot from the plot is that we the lasso model considers one or two predictors at max which we expect to be `siri` and `density`.
+Lastly, we notice that the value of the MSE is increased. This is quite unexpected because when we apply the the shrinkage method we usually expect an increase in the performance and so a reduction of the MSE.
+```{r}
+out <-  glmnet(x,y, alpha = 1, lambda = grid)
+lasso.coef <-  predict(out, type = 'coefficients', s = bestlam)
+lasso.coef
+```
+From the analysis of the coefficients we notice the substantial difference between the ridge and the lasso: resulting coefficient are sparse. Indeed, the lasso model with $\lambda$ chosen by cross validation contains only 2 variables `siri` and `density`, as expected.
+
+## Critically evaluate the results you obtained. If they look suspicious, think about a possible cause. For example, examine the coefficients of the least square regression model (estimate and sign), together with the R2 value; compute the pairwise correlations between the variables, . . . <br> Think of a modification of the analysis in light of your findings and repeat steps 1-4 of your new analysis. Comment on the new results.
+To recap we decide to create a small data frame where we store the results of our analysis to make it easier a comparison between the three different methods that we have used. 
+```{r}
+MSEs <- c(MSE.lm, MSE_ridge, MSE_lasso)
+Model <-  c('Linear regression', 'Ridge regression', 'Lasso regression')
+results <-  data.frame(Model, MSEs)
+knitr::kable(results)
+```
+The results of the analysis look suspicious. Since the beginning of our analysis we were aware that something strange was going on. Indeed, what triggers us is that we expected an increase of the performance when we applied the shrinkage methods. Moreover, there is a relatively big difference between the MSE of the ridge and the one of the lasso and we typically expect that they will produce similar results ( here the MSE of the lasso is almost twice the one of the ridge). In addition, from a theoretical point of view, the lasso typically outperforms the ridge when we have just few relevant predictors (and this should be the case).
+It looks reasonable believing that what causes all these problems was the variable `siri`. To better understand this we decide to produce a corrplot. 
+```{r}
+library(ggcorrplot)
+data(grasso)
+corr <- round(cor(grasso), 1)
+
+# Plot
+ggcorrplot(corr, hc.order = TRUE, 
+           type = "lower", 
+           lab = TRUE, 
+           lab_size = 3, 
+           method="square", 
+           colors = c("tomato2", "white", "springgreen3"), 
+           title="Correlogram of fats", 
+           ggtheme=theme_bw)
+```
+This beautiful plot shows us what we have already seen during our data exploration but, now we are more aware of what is going on. Indeed, we have an hypothesis: the variable `siri` is equal to `y`. As we said at the beginning `siri` is an indicator used to compute the percentage of body fat while `y` indicates the body fat. Hence, we can think that the dataset that we have analyzed could have been used by some nutritionists to see if `siri` is a good substitute for `y`  or something like that, and according to the data it is.  <br>
+Thus, what looks reasonable is to redo our analysis but with a new dataset that does not include the variable `siri`. In this way we should be able to conduct an unbiased analysis. Lastly, before starting again we want to make an hypothesis based on our knowledge until now: we expect that the variable `density` would be an important one because it was used to compute the value of `siri` and also because it should be an unbiased estimator (recalling the reasoning made at the beginning, detecting the % of body fat by measuring the circumferences of different body parts can be not reliable). 
+## NEW START
+The first thing that we do is to create our new data set `grasso2` which is exactly the same as before but without the column `siri`.
+```{r}
+grasso2 <-  grasso[,c(-2)]
+summary(grasso2)
+```
+Now we decide to show the corplot of this new data set. 
+```{r}
+
+corr <- round(cor(grasso2), 1)
+
+# Plot
+ggcorrplot(corr, hc.order = TRUE, 
+           type = "lower", 
+           lab = TRUE, 
+           lab_size = 3, 
+           method="square", 
+           colors = c("tomato2", "white", "springgreen3"), 
+           title="Correlogram of fats", 
+           ggtheme=theme_bw)
+```
+As we can see there is a strong negative relation between `y` and `density`. 
+Now we want make some models and test them. Hence we create the train set and the validation set. To make the results as comparable as possible to the one made before we will use the same indexes to create the two sets. 
+```{r}
+train_gr2 <-  grasso2[train_ind,]
+test_gr2 <-  grasso2[-train_ind,]
+```
+Now we create the linear model 
+```{r}
+lm_gr2 <-  lm(y~., data = train_gr2)
+summary(lm_gr2)
+```
+The summary of the linear model shows exactly what we have supposed. Indeed, we see that the only reliable predictor is `density`. We also see that the value of the __Adjusted R Squared__ is really high and this is a good indicator for our model. 
+The next step of our analysis is to compute the MSE
+```{r}
+lm.pred2 <-  predict(lm_gr2, test_gr2, type = 'response')
+MSE.lm2 <- mean((lm.pred2 - test_gr2$y)^2)
+MSE.lm2
+```
+Now we want to compare this result with the one that we will obtain from the ridge regression and the lasso regression. 
+This time we expect that there will be an improvement and so a reduction of the MSE with the shrinkage methods. We also hypothesize that the lasso will outperform the ridge. We think so because the lasso typically performs better in settings where a relatively small number of predictors have substantial coefficients, and the remaining predictors have coefficients that are very small or equal to zero. Let's see if this intuition is right or not. 
+
+```{r}
+x_train2 <-  model.matrix(y ~., train_gr2)[,-1]
+x_test2 <-  model.matrix(y ~., test_gr2)[,-1]
+y_train2 <- train_gr2$y
+y_test2 <-  test_gr2$y
+```
+
+```{r}
+grid <-  10^seq(10, -2, length =100) 
+ridge.mod2 <-  glmnet(x_train2,y_train2,alpha = 0, lambda = grid)
+
+plot_glmnet(ridge.mod2, xvar = 'lambda')
+plot_glmnet(ridge.mod2, xvar = 'lambda', ylim = c(0,2))
+
+rig.fit2 <-  cv.glmnet(x_train2, y_train2, alpha = 0, lambda = grid)
+plot(rig.fit2)
+
+lambda2 <-  rig.fit2$lambda.min
+pred_ridge2 <-  predict(ridge.mod2, s = lambda2, newx = x_test2)
+MSE_ridge2 <- mean((y_test2 - pred_ridge2)^2)
+print(MSE_ridge2)
+
+```
+The plot shows that for small values of lambda the only predictor that is not close to zero is `density` which then becomes close to zero for big values of lambda.
+We also see that the MSE computed with the ridge is close to the one of the linear model but it is slightly higher.
+
+Now we want to take a look at the values of the coefficients 
+```{r}
+x2 <-  model.matrix(y ~., grasso2)[,-1]
+y2 <-  grasso2$y
+out_full_mod2 <-  glmnet(x2,y2,alpha = 0)
+predict(out_full_mod2, type = 'coefficients', s = lambda2)
+```
+This results is another confirm of what we have said since now. Almost all the coefficients are close to zero a part from `density` which appears as the only important predictor for our analysis. <br>
+
+Now we want to see what happen when we apply the lasso regression. 
+```{r}
+lasso.mod2 <-  glmnet(x_train2, y_train2, alpha = 1 , lambda = grid)
+plot_glmnet(lasso.mod2, xvar = 'lambda', label = T)
+plot_glmnet(lasso.mod2, xvar = 'lambda', label = T, ylim = c(0,0.5))
+```
+Here we see that once again the unique predictor that is not close to zero for all the values of $\lambda$ is `density`. From the zooming of the plot here we see that all the other variables are immediately close to zero and for slightly bigger values of $\lambda$ they are equal to 0.
+
+```{r}
+cv.out2  <-  cv.glmnet(x_train2, y_train2, alpha = 1)
+plot(cv.out2)
+bestlam2 <-  cv.out2$lambda.min
+lasso.pred2 <- predict(lasso.mod2, s = bestlam2, newx = x_test2)
+MSE_lasso2 <- mean((lasso.pred2 - y_test2)^2)
+MSE_lasso2
+```
+Our intuition was correct. Indeed, we notice how the MSE of the lasso regression is lowwer than the one obtained with the ridge regression and also smaller than the one obtained with the linear model. Before we making a final comment we want to show the "importance" of the predictors for our analysis. 
+```{r}
+out2 <-  glmnet(x2,y2, alpha = 1, lambda = grid)
+lasso.coef2 <-  predict(out2, type = 'coefficients', s = bestlam2)
+lasso.coef2
+```
+From these we can see that almost all the predictors have been shrunken and are equal to 0 or almost 0 except from `density`. 
+##FINAL COMMENT 
+We firstly sum up the results obtained creating a table
+```{r}
+MSEs_unbiased <- c(MSE.lm2, MSE_ridge2, MSE_lasso2)
+Model <-  c('Linear regression', 'Ridge regression', 'Lasso regression')
+results$MSEs_unbiased <-  MSEs_unbiased
+knitr::kable(results)
+```
+To conclude, the best model for analyzing the data set is the lasso made on the reduced model. To recap, we have to reduce the dataset because it does not have sense to predict a variable with a variable that is the practically the same (`y` and `siri` are the same thing). Indeed, the models created were almost perfect, we recall the the first linear model has an __Adjusted R-squared__ equal to 99. This also explains why the ridge and especially the lasso produced slightly worse results: there was no need to shrink the coefficients and this probably had a negative results. However, in all the methods with the full data set the MSE was really small. <br>
+On the other hand, with the reduced data set the results are a bit different. The linear model is still a good way to predict `y`. This is because the variable `density`(which was also used to compute `siri`) is a really important predictor for estimating the percentage of body fat. Lastly, we have seen how the lasso outperforms both the ridge and the least squares because we are in the scenario where this model typically performs better hence, when there are just few (in this case only one) predictors that strongly affects the analysis.
+
+
+
+
+# Exercise 2 
+### In this question, you will revisit the Hitters dataset. The goal is to predict the salary of baseball players, as a quantitative variable, from the other explanatory variables.
+
+The first thing that we do is as usual importing the data set and exploring it.
+```{r}
+library(ISLR)
+baseball <-  ISLR::Hitters
+dim(baseball)
+summary(baseball)
+```
+As always the summary of the data set gives us many useful information: the first thing that we notice is that there are some missing information for `salary`. Here we have two choices, that as always happen in life, involve a trade off: we can decide to remove the observation from the data set or to substitute the missing values with the mean or the average for that category. 
+If we remove them we have less observation and this can negatively affect the analysis, also because we have many variables. On the other hand, if we substitute these values with the mean/median of the category we also risk to bias our data and consequently our analysis. To conclude, we decide to remove the missing observation because although we will have less observation we know that there are some statistical techniques that can help us to create many random sub-samples in order to overcome the problems caused by small data set.(e.g. bagging; boosting; random forests).
+Continuing our analysis, we look more in details our variables we notice that there are three categorical variables `NewLeague`, `League`, `Division`, all the others are continuous variables. Looking more in detail the variables, is not difficult to notice that they are on different scales. For example, the number of years in major league and the number of runs in the season are quite different: the number of years ranges between 1 and 24 while the numbers of runs ranges between 1 and 2165. This is an important factor that we should keep in mind for our analysis. <br>
+ 
+So, now we want to remove all the missing information and then we will consider the reduce data set for our analysis.
+```{r}
+baseball <-  na.omit(baseball)
+summary(baseball)
+```
+Now we want to investigate if there is an high degree of correlation among the variables of our data-set. 
+```{r}
+corr <- round(cor(baseball[,c(-14,-15,-20)]), 1)
+
+# Plot
+ggcorrplot(corr, hc.order = TRUE, 
+           type = "lower", 
+           lab = TRUE, 
+           lab_size = 3, 
+           method="square", 
+           colors = c("firebrick1", "gold", "royalblue"), 
+           title="Correlogram of fats", 
+           ggtheme=theme_bw)
+```
+This correlation plot gives us many useful pieces of information. The plot shows with different color the level of correlation among the continuous variables (the correlation plot does not accept categorical variables); in yellow are shown weak relations among the variable while in blue are represented the ones with an high degree of correlation       . More specifically we spot a "little blue triangle" in the left part of our plot where there is an high degree of correlation among variables. The variables included in this area are the following: `CAtBat`, `CAtHits`, `CRuns`, `CHits`, `CRBI`, `CWalks`, `Years`, `CHRuns`. It is not difficult understand why these variables are correlated:  they refer to the attack phase of a baseball match and the possible points that a player can do; they are correlated with the number of attempts that a player had.
+With this last consideration we end up the data exploration.
+### Split the data into training/test sets.
+```{r}
+set.seed(99)
+train_in <-  sample(nrow(baseball), nrow(baseball)*.5)
+basetrain <- baseball[train_in,]
+basetest <-  baseball[-train_in,]
+```
+As we did in the first exercise we have split the data set in two halves, one will be used for the training the other will be instead used for the testing. 
+### Fit a decision tree on the training data and plot the results. Choose the tree complexity by crossvalidation: plot the cross-validation deviance versus the number of terminal nodes and prune the tree if applicable. Finally, evaluate the optimal model by computing the test MSE.
+Now we are asked to fit a regression tree to predict the salary of baseball players for the next year. 
+The first thing that we do is to create a simple regression tree.
+```{r}
+set.seed(99)
+tree.baseball <-  tree(Salary ~., data = basetrain)
+summary(tree.baseball)
+```
+Let's now examine the output of the summary.It indicates that only seven variable have been used to construct the regression tree, the variables are the following: `CRBI`, `CAtBat`, `PutOuts`, `Runs`, `RBI`, `CHits` and `Years`. We also have information regarding the number of leaves: 10 and also about the the sum of squared error for the tree  40470. <br>
+Now we decide to plot the regression tree; this allows us to take advantage of the characteristic that make the tree-based models competitive with other regression methods: they are easy to interpret and they provide nice graphical representation. 
+```{r}
+plot(tree.baseball)
+text(tree.baseball, pretty = 0)
+```
+Now we have plotted the regression tree. This gives us a visual insight into the model. This representation is useful because we can visualize the terminal nodes, all the variable involved in the decision tree and the different splits. The first split involve the variable `CRBI`, that refers to the number of runs batted during the player's career, and so this could be considered as one of the most important predictor for our analysis.
+The variables used to create this regression tree have something in common: they refer to the scoring system used in baseball plus the variable `year`. <br>
+Although this result is inaccurate, it shows that the next-season salary is related to the performance of the previous seasons.
+Now we are asked to choose the tree complexity by cross-validation and to plot the cross-validation deviance versus the number of terminal nodes.
+```{r}
+set.seed(99)
+cv.baseball <- cv.tree(tree.baseball)
+plot(cv.baseball$size, cv.baseball$dev, type = 'b', col = 'springgreen3', main = 'Cross-Valiation deviance Vs number of terminal nodes', xlab = 'Number of terminal nodes', ylab = 'CV deviance', lwd = 2)
+bestpoint <- min(cv.baseball$dev)
+cord <-  which.min(cv.baseball$dev)
+points(cv.baseball$size[cord], bestpoint, col = 'indianred', cex = 2, pch=20)
+```
+The above plot, _Cross-validation deviance vs number of terminal nodes_, shows that the tree with 5 terminal nodes, is selected by cross-validation. However, if we wish to prune the tree, we can also do as follows:
+```{r}
+set.seed(99)
+prune.baseball <- prune.tree(tree.baseball, best = 5)
+summary(prune.baseball)
+plot(prune.baseball)
+text(prune.baseball, pretty = 0)
+```
+In the above plot we have shown the pruned tree with only 5 terminal nodes. This tree uses for its split just the following variables: `CRBI`, `CAtBat`, `Runs` and `RBI`.
+Now we want to find the regression tree that makes the best prediction. To compare the different trees we use the MSE. Hence, now we will compute the MSE for each regression tree. 
+```{r}
+yhat <- predict(tree.baseball, newdata = basetest)
+plot(yhat, basetest$Salary) 
+abline(0,1)
+MSE_Simple_tree <- mean((yhat- basetest$Salary)^2)
+```
+The test set MSE associated with the regression tree is 160051.3 Hence, the square root of the MSE is therefore around 400.0641 indicating that this model leads to test predictions that are within around $400.0641 of the true median salary for a baseball player of the major league. 
+```{r}
+yhat2 <- predict(prune.baseball, newdata = basetest)
+plot(yhat2, basetest$Salary)
+abline(0,1)
+MSE_Pruned_tree <- mean((yhat2 - basetest$Salary)^2)
+```
+The MSE obtained from the pruned tree is equal to 137877.7 and it is lower than the one obtained from the simple regression tree. From this we can conclude that: <br>
+1) Pruning the tree has improved the performance and this helps to make more accurate and more interpretable results;
+2) this second model leads to test prediction that are within around $371.3189 of the true median salary for a baseball player of the major league. 
+
+###Apply bagging on the training portion of the data and evaluate the test MSE. Does bagging improve the performance?
+Now we want to improve the performance of our model using the bagging which is a a general purpose procedure for reducing the variance of a statistical learning methods. 
+```{r}
+set.seed(99)
+bag.baseball <-  randomForest(Salary ~., data = basetrain, mtry=19, importance = T) # mtry = 19 indicates that all predictors should be considered for each split of the tree or, in other words, that bagging should be done.
+bag.baseball
+```
+Now that we have created this bagged model we want to see how well it performs on the test data. 
+```{r}
+yhat.bag <-  predict(bag.baseball, newdata = basetest)
+plot(yhat.bag, basetest$Salary)
+abline(0,1, col = 'steelblue', lwd = 3)
+MSE_bagged <- mean((yhat.bag-basetest$Salary)^2)
+```
+The test set MSE associated with the bagged regression tree is 112033.3, that is lower than the one obtained with the pruned tree. This means that our prediction of the salary will be corrected within a range of 334.71$.
+Hence, as we expected, applying the boosting improves the performance. This improvement is also visible from the plot where the observations are better spread.
+
+### When we grow a random forest, we have to choose the number m of variables to consider at each split. Remember that bagging is a particular case of random forest with m equal to the number of explanatory variables nvar. Set the range for m from 1 to nvar. Define a matrix with nvar rows and 2 columns and fill it with the test error (1st column) and OOB error on training data (2nd column) corresponding to each choice of m. Save the matrix as a dataframe and give it suitable column names. Compare OOB errors with test errors across the m values. Are the values different? Do they reach the minimum for the same value of m?
+Now we are asked to check if the MSE is different from the OOB which is an alternative way to estimate the test error of a bagged model. 
+To check these two values for all the possible values of `mtry` we use a for cycle. To store the data we create two empty vectors and we will append the corresponding values at each iteration. 
+```{r}
+list_of_MSE <-  c()
+list_of_OOB <-  c()
+list_of_mtry <-  c()
+results <-  matrix(ncol = 3, nrow = 19)
+giri <- ncol(baseball) - 1 
+set.seed(99)
+for ( i in 1: giri){
+  bag.baseball <-  randomForest(Salary ~., data = basetrain, mtry=i, importance = T)
+  yhat.bag <-  predict(bag.baseball, newdata = basetest)
+  MSE.bag <- mean((yhat.bag-basetest$Salary)^2)
+  list_of_MSE <- append(list_of_MSE, MSE.bag)
+  OOB <- bag.baseball$mse[length(bag.baseball$mse)]
+  list_of_OOB <- append(list_of_OOB,OOB )
+  list_of_mtry <- append(list_of_mtry,i)
+}
+```
+
+Now we aggreagte the results in the above constructed matrix.
+```{r}
+results[,1] <-  list_of_MSE
+results[,2] <-  list_of_OOB
+results[,3] <-  list_of_mtry 
+results <-  data.frame(results)
+colnames(results) <- c('MSE','OOB', 'mtry')
+knitr::kable(results)
+```
+In the above table we show the values of the MSE error and the OOB error for each value of `mtry`.
+Now, we also plot the results in order to better visualize and compare the results
+```{r}
+plot(seq(1,19), list_of_MSE, type='b', col = 'red', main = 'MSE vs OOB', xlab = 'mtry', ylab = 'error', ylim = c(60000,122000))
+lines(seq(1,19),list_of_OOB, type='b', col = 'blue')
+legend('bottomright', legend = c('MSE', 'OOB'), col=c('red','blue'), lty = 1, cex = .64)
+points(which.min(list_of_MSE), list_of_MSE[which.min(list_of_MSE)], col = 'firebrick', cex = 2, pch = 20)
+text(which.min(list_of_MSE), list_of_MSE[which.min(list_of_MSE)], labels = which.min(list_of_MSE), pos = 1)
+points(which.min(list_of_OOB), list_of_OOB[which.min(list_of_OOB)], col = 'royalblue', cex = 2, pch = 20)
+text(which.min(list_of_OOB), list_of_OOB[which.min(list_of_OOB)], labels = which.min(list_of_OOB), pos = 1)
+
+```
+Here we have plotted the values of the MSE and the OOB for each value of `mtry` and highlighted for which number of of `mtry` the two errors reach their minimum values. 
+Now we have show again the best number of `mtry` for the OOB error and the MSE. 
+```{r}
+min_OBB <-  which.min(results$OOB)
+min_MSE <-  which.min(results$MSE)
+sprintf('The optimal number of mtry for the MSE is %d',min_MSE)
+sprintf('The optimal number of mtry for the OBB is %x',min_OBB)
+```
+Firstly, it is easy to notice that the values for the MSE differ from the ones of the OBB. Moreover, we have also checked that they reached their minimum for different values of variables considered in the model. 
+
+## Reach a conclusion about the optimal random forest model on the training data and evaluate the model performance on the test data. Identify the variables that are important for prediction.
+
+Now we have to choose an optimal random forest model on the training data. Hence, we are asked to make a priori decision based on our training data without considering the validation set. Thus, the most logic thing to do is to choose our model based on the value of the OOB which is also a valid estimate of the test error since the response for each observation is predicted using only the trees that were not fit using that observation.
+So, we decide to choose the model with the minimal OBB which is the one that considers ($m=2$) just 2 predictors for each split of the tree. This is good for two reasons: <br>
+1) This allows to avoid problems connected with strong predictors. This should lead to a substantial reduction of the variance;
+2) Using a small value of m in building a random forest will typically be helpful when we have a large number of correlated predictors as in this case.<br>
+So, we decide to compute a random forest model based on the results obtained from the analysis of the OOB error. 
+```{r}
+set.seed(99)
+rf.baseball <-  randomForest(Salary ~., data = basetrain, mtry=2, importance = T)
+yhat.rf <-  predict(rf.baseball, newdata = basetest)
+MSE.rf <- mean((yhat.rf-basetest$Salary)^2)
+
+
+knitr::kable(importance(rf.baseball))
+```
+
+```{r}
+varImpPlot(rf.baseball)
+```
+Now we want to inspect the results obtained from the just compute random forest model.
+As we can see from the above plot and the previous table there are many important predictors. `CRuns` is probably the most important one, the other relevant predictors are the following `CRBI` and `CHits`. 
+However, we wonder if the performance of the random forest can be improved. Actually, we are quite suspicious about our results because we expected an improvement from the bagging to the random forest but it did not occur; the MSE of the random forest is higher than the one obtained with the bagging. <br>
+We have made our decision on the basis of our training data but we know that considering $m \approx \sqrt{p}$ typically leads to better results. Thus, we want to verify it. 
+```{r}
+set.seed(99)
+m <-  round(sqrt(ncol(baseball)-1),1)
+rf.baseball2 <-  randomForest(Salary ~., data = basetrain, mtry= m, importance = T)
+yhat.rf2 <-  predict(rf.baseball2, newdata = basetest)
+MSE.rf2 <- mean((yhat.rf2-basetest$Salary)^2)
+print(MSE.rf2)
+knitr::kable(importance(rf.baseball2))
+```
+We have verified that using a value of $m \approx \sqrt{p}$ has improved the performance of the random forest although the MSE is still slightly higher than the one obtained with the bagging. 
+Lastly, we now want to make a focus on the importance of the variables of the new random forest. 
+
+```{r}
+varImpPlot(rf.baseball2)
+```
+From this second importance plot we get that the most important predictors are still the same: `CRuns`,`CRBI` and `CHits` although, some little difference in the values.
+
+## Fit a regression tree on the training data using boosting. Find the optimal number of boosting iterations, both by evaluating the OOB error and the cross-validation error. Produce plots with OOB error and CV error against the number of iterations: are the two methods leading to the same choice of the optimal number of iterations? Reach a conclusion about the optimal model, evaluate the test MSE of this model and produce a partial dependence plot of the resulting top N variables (N of your choice).
+We now discuss boosting, another approach for improving the predictions resulting from a decision tree. Boosting works similarly to bagging but with this new method, trees are grown _sequentially_, each tree is grown using information from previously grown trees and each tree is fit on a modified version of the original data set.
+Boosting approach learns slowly and typically these kind of methods are the ones that perform better. So, we expected an improvement in our results after having applied boosting.  
+```{r}
+set.seed(99)
+boost.baseball <-  gbm(Salary~., data = basetrain, distribution = 'gaussian', n.trees = 5000, interaction.depth = 4)
+knitr::kable(summary(boost.baseball))
+yhat._first_boost <-  predict(boost.baseball, newdata = basetest, n.trees = 5000)
+MSE_first_Boost <- mean((yhat._first_boost - basetest$Salary)^2)
+```
+Here we have computed the boosting using 5000 trees and the MSE associated with this new model. At a first look boosting does not lead to a significant improvement of the performances. However, we now that we can tune three parameters in order to improve boosting.
+We have also produced the relative influence plot and also the relative influence statistics. These two gives us very useful information about the most important predictors although, this is not the definitive model. The first thing we notice is that the most important predictors are the ones that show the whole career statistics. The second thing is that these predictors also show statistics about the performances of the players. Hence, we may seriously start thinking that the salary of a player depends on the overall performances in his career. 
+
+Now we are asked to find the optimal number of boosting iterations by evaluating both the OOB error and the cross-validation error.
+```{r}
+set.seed(99)
+
+boost_hit <- gbm(Salary~., data=basetrain, distribution = 'gaussian',
+         interaction.depth=4,
+         bag.fraction = 0.5, # info che passo da un albero all'altro
+         train.fraction = 0.6, # Uso il 60% del train il resto per la validazione
+         cv.folds=10,
+         n.trees = 5000,
+         shrinkage = 0.01, verbose = F)
+
+```
+
+Now we decide to plot the results 
+```{r}
+cv_boost <- gbm.perf(boost_hit, method = 'cv')
+#oob_boost <- gbm.perf(boost_hit, method = 'OOB')
+#boost_hit$valid.error # OOB
+#boost_hit$cv.error # cv 
+n_iteration_cv <- which.min(boost_hit$cv.error)
+n_iteration_oob <-  which.min(boost_hit$valid.error)
+points(n_iteration_oob, min(boost_hit$valid.error), col = 'red', cex = 2, pch = 20 )
+points(n_iteration_cv, min(boost_hit$cv.error), col = 'green', cex = 2, pch = 20)
+text(n_iteration_oob, min(boost_hit$valid.error), labels = n_iteration_oob, pos = 1)
+text(n_iteration_cv, min(boost_hit$cv.error), labels = n_iteration_cv, pos = 4)
+#legend(3700, 200000,legend = c('OOB-error', 'CV-error'), col= c('red','green'), box.lty=0)
+text(4500, 105000, labels = 'CV-error', col = 'green')
+text(4500, 55000, labels = 'OOB-error', col = 'red')
+```
+In the above plot we show how the cross-validation error and the OOB error change according to the number of iteration. Here the main point is to choose the optimal number of iteration for boosting. The OOB error and the CV error show different results. For the OOB the best number of iteration is 338 while for CV-error is 723. However, we tend to prefer the output provided by the CV-error. Indeed, if run `oob_boost <- gbm.perf(boost_hit, method = 'OOB')` R gives us a warning _OOB generally underestimates the optimal number of iterations although predictive performance is reasonably competitive._ This underestimation may be due to the fact that the GBM method is partly estimated on in-bag samples, as the OOB samples for the Nth iteration are likely to have been in-bag in previous iterations. This approach is known to underestimate the number of required iterations, which means that it’s not very useful in practice. 
+Hence, the main finding is that CV remains the most reliable approach.
+In conclusion, stick to cross-validation for the best results which is 723 iterations. 
+Now that we have chosen a criteria to define the optimal number of iteration for the boosting we recompute the bagging and we estimate the MSE
+```{r}
+set.seed(1)
+best.boost  <-  gbm(Salary~., data = basetrain, distribution = 'gaussian', n.trees = n_iteration_cv, interaction.depth = 4)
+oob.boost <- gbm(Salary~., data = basetrain, distribution = 'gaussian', n.trees = n_iteration_oob, interaction.depth = 4)
+ 
+yhat.boost <-  predict(best.boost, newdata = basetest, n.trees = n_iteration_cv)
+MSE_BBoost <- mean((yhat.boost - basetest$Salary)^2)
+yhat.boost_oob <- predict(best.boost, newdata = basetest, n.trees = n_iteration_oob) 
+MSE_OOBboost <- mean((yhat.boost_oob - basetest$Salary)^2)
+```
+Here we have computed the MSE of our  relatively 'optimal' boosting model with the number of interactions choose by the CV-error and also the MSE of the model with the optimal number of iterations defined by the OOB error. 
+(The purpose of this was for double checking that the choice based on the CV-error). We see that the MSE of the model computed with a number of iteration defined by the CV is slightly lower than the one computed with the iteration term defined according to the OOB-error. However, both the new models have shown a lower MSE compared to the first boosting model computed with a default number of iterations (5000). 
+```{r}
+B_results <-  c(MSE_first_Boost, MSE_OOBboost, MSE_BBoost)
+etichette <-  c('First model with \n 5000 iterations', 'OOB model with\n 338 iterations', 'CV model with \n 723 iterations')
+boosting_results <-  data.frame(B_results, etichette)
+knitr::kable(boosting_results)
+barplot(B_results, names.arg = etichette, col = c('hotpink', 'turquoise', 'seagreen'), ylim = c(105000,113000), main = 'Comparison between boosting MSEs', width = 5)
+```
+Here we are representing the results of the MSEs of the boosting with different number of iterations. We have decided to report a table and a graph because it is important to take a look to the numerical values before watching the bar plot. We say so because we are zooming in to the bar plot in order to make visible the difference among the MSEs. However, this is not a common practice in dataviz because this kind of representation could be misleading for the reader. 
+However, statistically speaking, we have checked that the MSE computed with the number of iteration defined by the CV-error is better than the other one. 
+
+Now to conclude this task we are going to plot the dependence plot of the 3 most important predictors and to comment the results. 
+```{r}
+knitr::kable(summary(best.boost))
+plot(best.boost, i = 'CHits', main='Salary vs CHits')
+plot(best.boost, i = 'CHmRun', main='Salary vs CHmRun')
+plot(best.boost, i = 'CWalks',  main='Salary vs CWalks')
+```
+According to `best.boost` the three most important variables are `Chits`, `CHmRun`, `CWalks`. The first thing that we notice is that all these variables refer to statistics that consider the whole career of a player, this can help us to formulate some hypothesis: for example, we may think that the `Salary` of player depends more on his whole career rather than a single season. 
+Now we look more in details the individual dependence plot:<br>
+1) _Salary vs CHits_ we see that the `Salary` increase when the number of total hits in career grows until it is reached the peak. After that it start to decrease and then it becomes flat and fixed to a certain level. This results can be interpreted as follows: the salary of player grows with the number of hits which is also probably a good estimate of games played. So, a player earns more when he becomes more experienced but until a certain level, because when players become too old their performance probably decrease and with it the money that a team is eager to pay. <br>
+2) _Salary Vs CHmRun_ we see an almost stable trend for the salary in relation with the number of home runs in career. However, reached 100 home runs the `Salary` has an enormous growth then it slightly decrease and then it growths again reaching almost the peak value and remains stable for an high number of total home runs. To better interpret the results we may have to consider that the home run is the highest point that a player can do when he is trying to hit the ball. Hence, we may think that a player with more than 100 home runs is a good player and deserves an high salary. We may probably assume that a player reaches this number of home runs after some years played in the major league and after many hits. So this is coherent with the previous commented plot. Lastly, we notice that for high numbers of home runs (starting from 200) there is a fixed and high level of income for the players. This can be explained by saying that players which arrive to these numbers of home run are exceptional players.<br>
+3) _Salary vs CWalks_ As for the other variables we see that the Salary grows with the number of walks in career until then after a value of 500 walks the `Salary` decrease a bit and then it becomes fixed for higher values of walks. The walks in baseballs refers to a point that can be done by a pitcher. The trend of walks and salary can be explained as follows: the number of walks in career increase with the number of games played and so as for the number of home runs a player is awarded for his good performances with an increase in the salary until it becomes too old and the salary slightly decrease and then it becomes high and constant for player that have achieved very good results. 
+
+## Draw some general conclusions about the analysis and the different methods that you considered
+To conclude our analysis, we want to firstly compare the model by visualizing the different MSEs provided by the model and then on the basis of the optimal models try to explain the values that we have computed.
+```{r}
+MSEs_decision_trees <-  c(MSE_Simple_tree, MSE_Pruned_tree, MSE_bagged, MSE.rf2,MSE_BBoost)
+decision_tree <-  c('Simple tree', 'Pruned tree', 'Bagging', 'Random Forest', 'Boosting')
+final_results <-  data.frame(MSEs_decision_trees, decision_tree)
+colnames(final_results) <-  c('MSE','Model')
+knitr::kable(final_results)
+```
+Here we have created a small data frame wehre we summarize the results obtained. Now we decide to mske a barplot to have a visual insight into the results. 
+```{r}
+barplot(MSEs_decision_trees, names.arg =  c('Simple \n tree', 'Pruned \n tree', 'Bagging', 'Random \n Forest', 'Boosting'),main='Comparison among the different decision tree models', col = c('seagreen', 'firebrick', 'royalblue', 'hotpink', 'cyan1'))
+```
+Now we zoom into the three best models.
+```{r}
+barplot(MSEs_decision_trees[3:5], names.arg =  c('Bagging', 'Random Forest', 'Boosting'),main='Comparison among the different decision tree models \n "ZOOM"', col = c('royalblue', 'hotpink', 'cyan1'), ylim= c(100000, 120000) )
+```
+Here we have shown two graphs: the first is a bar plot which represent the MSE associated with each model, the second graph is just a zoom of the previous plot and it was made to make more visible the difference among the three best models (Bagging, Random Forest and Boosting).
+The first step of the analysis was creating a simple regression tree however, as we know this method can be easily improved in many different ways, the first improvement has been made by pruning the tree. Indeed, pruning should reduce problems connected with overfitting that are typically connected with too complex decision trees. The second attempt to improved the accuracy of our predictions involved the _bootstrap aggregation_. This procedure typically reduces variance and has no effect on the bias. Actually, bagging has dramatically reduced the MSE of the original regression tree. The next natural move has been trying to apply the random forest procedure. This method usually improves the performances of bagging because this procedure tries to solve the problems caused by highly correlated trees and the presence of strong predictors. 
+Nonetheless, here applying the random forest procedure not only did not lead to an improvement of the performance but it has also increased the MSEs. It is difficult to explain this result also because we have some highly correlated variables that typically negatively affect the bagging but not the random forest. One possible explanation, although quite bizarre, is that this result could have been influenced by the seed. 
+Lastly, we have tried to apply boosting which is another approach for improving the predictions resulting from a decision tree. Here we have experienced an improvement of the performances that has lead to the best tree based method. <br>
+Having clear all the statistical procedure we can try to give a more concrete interpretation of our output. We had to analyze a data set containing the statistics regarding all the baseball players in the major league from 1986 to 1987. The data set is made by 20 variables, many of them are highly correlated because they refer to the same stage of the match. For example, it is clear that the number of hits is related with the  number of times at bat. We also notice that we can define two macro classes of variables: the first refers to the statistics in the current season while the second takes into account the overall performance of a player in his career. 
+The results along all the analysis have highlighted that the most relevant variables for predicting the next season salary are the ones that refers to the whole career statistics. More specifically, what determines the salary of a player is his performance in terms of points. Indeed, for the boosting method, the most important predictors are `CHits`, `CHmRun`, `CWalks` and `CRuns`. Furthermore, we have also seen from the dependence plot that there are some particular trends: until a certain point the `Salary` and the above mentioned predictors are almost proportional (when one grows also the other grows) but after the peak there was a decrease and then another increase of the salary that becomes constant. One possible explanation, for this particular trend is the following:
+young players are less experienced and have 'worst' statistics and they are probably the less paid. But when they start to gain experience their performance improve and with them also their salary. 
+It is also reasonable to think that in this phase of the career will arise the differences between the average players and the top players.
+Indeed, we expect that after a certain values for the cumulative statistics (the ones with C) the salary of the players decrease because they have became old, but this is not the case of the above mentioned top players who probably reaches these high values before becoming too old and for this reason they are still more paid when they are "old". 
+We think that this could be a quite reasonable explanation for our results also because this is what typically happens in many other sports such as football or basketball.  
+```{r}
+boxplot(baseball$Salary)
+```
+To conclude we have also decided to plot this box-plot about the salary of the players which shows that the box is quite flattened and shows a quite big upper whisker and many outliers in the upper region. This also confirms that there are few players which earn more than the average. 
+ 
+
+
+
+
