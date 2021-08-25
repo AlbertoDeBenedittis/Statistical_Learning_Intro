@@ -1,0 +1,587 @@
+---
+title: "Homework_SL_1"
+author: "Alberto De Benedittis"
+date: "30/3/2021"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+```
+
+# Exercise 1 
+## Load the data 
+As usual, the first thing to do is to import the file. We simply read it through the `read.csv()` function. Indeed, although the file is in a _txt_ format, we notice that the values inside the document are separated by a comma so considering the document as a _csv_ is appropriate. Then we associate this data set to a new variable in order to manipulate it without modifying the original data set. This is useful in the case we make some mistakes. 
+``` {r}
+
+df <-  read.csv('disease.txt')
+```
+## Perform basic data exploration 
+``` {r}
+dim(df)
+names(df)
+summary(df)
+head(df)
+```
+The second thing to do is to understand what we have. So we need to explore the data set and understand its characteristic and the kind of data that we have.   
+From this basic data exploration we get that:
+the data set is made by 392 rows and 9 columns;
+we have 8 numerical categories ( _C1_ to _C8_);
+the last column (disease) although looks numerical has to be transformed into a categorical one;
+we do not have NAs.
+Moreover, with the command `summary()` we are able to understand some basics information regarding the numerical variables such as the mean, the median and the distribution of the quartiles.  
+
+We could transform the last column of our data-set into a categorical variable to make it simpler our future analysis
+```{r}
+df$disease <- as.factor(df$disease)
+
+#contrasts(df$disease)
+df$disease <- as.factor(ifelse(df$disease== '1', 'yes','no'))
+```
+Since we have changed the data set; I think that it is useful to do another `summary()` in order to have information about the number of people with the disease and the ones without. 
+```{r}
+summary(df)
+prop.table(summary(df$disease))
+```
+From this new summary we get that the number of people with the disease is one third of the population.   
+Once, we have the variable disease as categorical we can ask ourselves how the values of the other variables change according to have or not the disease. Hence, we can call the function `boxplot()` for each of the numerical variable as see if we can starting to spot some useful information. 
+```{r}
+
+for (i in 1:8){
+  title <- sprintf("Boxplot %d",i)
+  boxplot(df[,i] ~ df$disease, main = title, xlab = 'Disease', ylab =  sprintf("category %d",i), col = 'seagreen1')
+}
+``` 
+  
+In these box-plots we can see the the differences of the values for each of the numerical categories ( _C1_ to _C8_ ) according the condition of having or not the disease. 
+I think that it is interesting considering the second box-plots, here there is a not irrelevant difference between the values of the yes condition compared to the one of the no condition. Hence, _C2_ has discriminative power on the disease because the median between the two categories are quite different. This could suggest that _C2_ is an important factor in determining the presence of the disease. A similar assumption could also be made for _C1_ and _C8_. However, this are just assumption and it is still difficult to assess the impact of the _C-variables_ on the disease. 
+
+## Check the distribution of attributes 
+Now we want to understand the distribution of the values for each numerical variable ( _C1_ - _C8_). To do so we simply use the function `hist()`.
+```{r}
+
+for (i in 1:8){
+  title <- sprintf("Cat %d",i)
+  hist(df[,i], main = title, freq = F, col='turquoise', xlab = '')
+} 
+
+
+```
+  
+Looking at the different histograms and their shapes we can say that:
+the values of the first, the fifth and the eighth categories follow an exponential distribution;
+the fourth and the sixth follows a normal distribution;
+for all the others is more complicated to precisely state which type of distribution exactly fits. However, we could say that they belong to the gamma/shifted-gamma family. Furthermore, since we have many observation we could also approximate the remaining distributions to a normal. 
+
+## Plot a scatterplot matrix between all the independent variables, coloring the data by disease status
+Now we want to create a scatter-plot matrix where the red observation refers to the individuals with the disease and the green observation refers to the people without the disease. 
+With this scatter-plot matrix we want to investigate the interaction between the different variables among each other. 
+We also call the function `cor()` which produces a matrix that contains all the pairwise correlations among the predictors in the data set. However, this function works only on numerical variables hence, we have to consider just the first eight columns of our data set.
+```{r}
+colorss <- c('green','red')
+pairs(df, pch=16, cex = 0.5, col = ifelse(df$disease =='yes', colorss[2], colorss[1]), main = 'Scatterplot matrix' )
+```
+
+```{r}
+cor(df[,-9])
+```
+
+```{r}
+column_1 <- c(rgb(green=255, blue = 0, red = 0,   alpha=65, maxColorValue=255),
+rgb(red=255,   green=0, blue = 0, alpha=50, maxColorValue=255) )
+column_1 <- ifelse(df$disease=='no', column_1[1], column_1[2])
+set.seed(99) 
+jittdf <-  apply(df[,1:8], 2, FUN=function(x){ jitter(x, amount=.56) })
+jittdf <-  cbind(jittdf, class=df[,1]) 
+pairs(df, col=column_1, pch=16, main = 'scatterplot matrix')
+```
+
+## Through plotting, try to understand which attributes are most related to the outcome
+
+In the previous point we create a scatter-plot matrix however, to avoid loosing information I have also create a new scatter-plot matrix were it is possible to see the overlapping points. 
+Said so, we can see that for _C1_, _C3_, _C4_, it is difficult to see any shape or something that can leads us to suggest that there is a relation to the disease status. On the other side, we see that _C2_ could be instead a relevant factor. Indeed, we see that the values are split in two main areas, on the left there are the values of not infected individuals while on the right there are the values of the infected ones. _C6_ and _C7_ do not show any particular trend so we can say that these two variables are not that related to the outcome. 
+On the other hand, _C8_ looks to be more related to the outcome because we can see the the data regarding the diseased individuals tend to be up and on the right compared to the one of not infected individuals. 
+More difficult is to establish if _C5_ is significantly related to the outcome or not.   
+
+# For all the subsequent exercises:  
+
+## Split the data randomly into reasonably sized train and test sets.  
+
+In order to make our analysis we need to split the data into a training set and a test set. 
+Before we begin, we use the `set.seed()` function in order to set a seed for R's random number generator, so that  we will obtain precisely the same results overtime. 
+To build our train set and test set we decide that the 60% of the observation will be used for the training set while the residual 40% will constitute our  test set. 
+Although this is not a very common choice, we did so in order to have a bigger training set but also a consistent test set where we will test the accuracy of our models.
+To build the two sets we use the `sample()` function which selects randomly two third of the rows. These will constitute the training set and all the other rows the test set. We could not have divided the data set considering just the first two third of the rows and the last third because that could have led to a loss of some information due to the method through which the data has been collected.  
+
+## Evaluate whether the re-scaling of predictors has an effect on your analyses/conclusions
+```{r}
+set.seed(99)
+size_tt <- floor(0.6 * nrow(df))
+train_ind <- sample(seq_len(nrow(df)), size = size_tt)
+train <-  df[train_ind,]
+test <-  df[-train_ind,]
+```
+# Exercise 2 
+## Perform a classification of the data into the two classes using a logistic regression model on all the predictors.
+Next, we will fit a logistic regression model in order to predict the presence of the _disease_ using _C1_ through _C8_. 
+The `glm()` function fits _generalized linear models_, a class of models that includes logistic regression. The syntax used is the same that we use to that of `lm()` but we have to pass the argument `family = binomial` in order to tell R to run a logistic regression rather than other type of generalized linear model. 
+```{r}
+glm.fits <-  glm(disease ~ ., data = train, family = 'binomial') 
+summary(glm.fits)
+
+```
+## Evaluate the output to identify the most significant predictors.
+Let's examine the summary of the regression model:
+The smallest p-values here is associated with _C2_ and it is very low this implies that there is a clear evidence of a real association between _C2_ and the disease. 
+The other statistically relevant predictors are _C1_ and _C7_; their p-values is below the ordinary threshold 0,05 but, we notice also that compared to _C2_ these other two predictors have a lower weight. (In the first attempt of doing the homework I set another seed and the only statistically relevant predictor was _C2_).
+Looking at the residual deviance and the null deviance we can say that there is no over-dispersion and we can reject the null hypothesis.  
+## Evaluate the model performance in terms of confusion matrix and train/test accuracy
+The `predict()` function can be used to predict the probability that an individual has the disease, given values of the predictors. The _type = response_  option tells R to output probabilities of the form $P(Y=1|X)$, as opposed to other information such as the _logit_. If no data set is supplied to the _predict()_ function, then the probabilities are computed for the training data that was used to fit the logistic regression model. Here we have printed the only the first ten probabilities. We know that these values correspond to the probability of having the disease, because the `contrast()` function indicates that R has created a dummy variable with a 1 for disease yes. 
+```{r}
+contrasts(df$disease)
+glm.probs <-predict(glm.fits, test,  type = 'response')
+glm.probs[1:10]
+```
+Now, in order to make prediction as to whether an individual has the disease or not, we must covert these predicted probabilities into class labels _yes_ and _no_. 
+To do so, we firstly create a vector of class prediction based on whether the predicted probability of having the disease is greater than or less than a fixed threshold that we decided to be 50%. 
+```{r}
+glm.pred <-  rep('no', nrow(test))
+
+glm.pred[glm.probs > 0.5] <- 'yes'
+```
+The first command creates a vector of 157 _no_. With the second command we transform all of the elements for which the predicted probability of being infected exceeds the 50%.  
+Now, that we have _glm.pred_ we can build the confusion matrix with the function `table()` in order to determine how many observation were correctly or incorrectly classified. 
+```{r}
+table(glm.pred, test$disease)
+mean(glm.pred == test$disease)
+mean(glm.pred != test$disease)
+glm.acc <-  mean(glm.pred == test$disease)
+```
+The diagonal elements of the confusion matrix indicate correct prediction, while the off diagonals represent incorrect prediction. Hence, our model correctly predicted that 94 individuals do not have the disease while 29 do have it. The `mean()` function can be used to compute the number of individuals for which the prediction was correct. In this case, logistic regression correctly predicted the presence of the disease for 78% of the individuals. 
+Our predictions looks quite satisfying since the model performs much better than random guessing. The accuracy of the model is high and consequently the error is low.
+However, since we are dealing with a disease, this result should be confirmed with further analysis in order to make a more accurate prediction that is not influenced by random noise or from other source of uncertainty. 
+
+ 
+## Using the fitted model, predict the probability of having the disease for someone who has C2=31 and all other predictors set to their average value.
+Now we want to use the previous fitted model to predict the probability of having the disease given some specific attributes. 
+To do so, we create a data set formed by just one observation where the all the variables have mean values except _C2_ which as a fixed values equals to 31.
+```{r}
+new_df <-  data.frame(C1 = mean(df$C1), C2 = 31, C3 = mean(df$C3), C4 = mean(df$C4),C5 = mean(df$C5), C6 = mean(df$C6), C7 = mean(df$C7), C8 = mean(df$C8))
+```
+Here we have this new data set that satisfies the request of the exercise and we can make prediction on this data set and compute the probability of having the disease. 
+```{r}
+prob.individuals <-  predict(glm.fits, new_df, type = 'response')
+prob.individuals
+```
+It seems very unlikely for un individual to have the disease if his values for C2 are equal to 31.
+
+## Let's examine if  rescaling the predictors has effect on our analysis/conclusion. 
+Now, we want to rescale the predictors and verify if this has some effect on our analysis. 
+To rescale the our dataframe we simply have to call the function `scale()`. However, we need to remember that in order to scale the dataframe we have to exclude the categorical variable _disease_. 
+```{r}
+standardized.X <-  scale(df[,-9])
+var(standardized.X[,1])
+var(standardized.X[,2])
+mean(standardized.X[,2])
+mean(standardized.X[,1])
+
+```
+In this way we have created a standardized dataframe which has variance 1 and mean (almost) 0.
+Now that we have created this new dataframe we add the categorical variable _disease_.
+```{r}
+standardized.X <-  as.data.frame(standardized.X)
+standardized.X$disease <-  df$disease
+train.x <-  standardized.X[train_ind,]
+test.x <-  standardized.X[-train_ind,]
+```
+Now we have created a new standardized training set and a new standardized test set both created with the same methods as before. 
+Now we will repeat the same computation to find the value of the accuracy of the test with the standardized sets. 
+```{r}
+
+glm.fitx <-  glm(disease~., data = train.x, family = 'binomial')
+summary(glm.fitx)
+```
+The result of this model are identical to the one computed above: _C2_ is the most statistically significant predictor detecting the presence of the disease then follow _C7_ and _C1_. 
+Once again we use the predict function to make our predictions and computing the probability of having the disease according to our model. 
+```{r}
+glm.probx <-predict(glm.fitx, test.x, type = 'response')
+glm.probx[1:10]
+```
+Now we use the probabilities just computed to create a vector of class predictions as before. 
+```{r}
+glm.predx <- rep('no', nrow(test.x))
+glm.predx[glm.probx>0.5] <-  'yes'
+```
+Lastly, we create a confusion matrix to investigate the accuracy of our new predictions. 
+```{r}
+table(glm.predx, test.x$disease)
+mean(glm.predx == test.x$disease)
+mean(glm.predx != test.x$disease)
+```
+As we can see from the results scaling the results does not have any effect on the analysis neither on the conclusion.
+
+# Exercise 3 
+
+## Perform a classification via a k-nn model using all of the available variables and exploring different values of k;  
+Now, we will use a different approach the __the K-Nearest Neighbor (KNN) model__. To perform the K-Nearest Neighbors we use the function `knn()`, which is part of the _class_ library. This function works rather differently from the other model-fitting functions. Rather than a two-step approach in which we first fit the model and then we use the model to make prediction, the `knn()` forms predictions using a single command. 
+For the KNN we need at least 4 ingredients:
+* a matrix with predictors for training (`train`);
+* a matrix with predictors for testing (`test`);
+* a vector with training labels (`cl`) 
+* the number of neighbor (`k`)
+To perform a classification via a k-nn model we create 4 data set in order to apply the function `knn()` we also create a function to easily compute the error rate and we also use a for loop to easily  compute and compare the accuracy of the knn models at different k levels.
+```{r} 
+library(class)
+x_tr <-  train[,1:8]
+x_ts <-  test[, 1:8]
+
+y_tr <-  train[,9]
+y_ts <-  test[,9]
+
+
+calc_error_rate <-  function(predicted.value, true.value){
+  mean(true.value != predicted.value)
+}
+
+set.seed(99)
+errors_tr <-  errors_ts <- c()
+kvec <-  c(seq(1:10), 20, 50, 100)
+for (k in kvec) {
+  pred_tr <- knn(x_tr, x_tr, y_tr, k = k, prob = TRUE)
+  pred_ts <- knn(x_tr, x_ts, y_tr, k = k, prob = TRUE)
+  err_tr <-  calc_error_rate(pred_tr, y_tr)
+  err_ts <- calc_error_rate(pred_ts, y_ts)
+  errors_tr <- append(errors_tr, err_tr)
+  errors_ts <-  append(errors_ts, err_ts)
+  print(table(pred_ts, test$disease))
+  errors_ts
+}
+
+plot(1,type = 'n', xlim = c(0.01,1), ylim = c(0, 0.4), log = 'x', xlab = '1/K', ylab = 'Error rate', main = 'Training error vs Test error')
+ lines(1/kvec, errors_tr, type = 'b', col = 'red')
+lines(1/kvec, errors_ts, type ='b', col ='blue')
+legend('bottomleft', legend = c('Training Error', 'Test Error'), col=c('red','blue'), lty = 1, cex = .64)
+```
+
+## Discuss the results and reach a conclusion on the optimal value for  k.  
+A crucial step when we apply the K-NN is to chose the right value for k. This is not an easy task since we have to face a trade-off: a bias-variance trade-off. Indeed, with a big value of K we have a simpler model, high bias and low variance; with a small value of k we have a more complex model, low bias and high variance. In other words, with a small value of k we tend to have an accurate model on average but we will obtain different results for different data set. On the other hand, with a big value of k the answer will be similar for different data set but the answer will be also less accurate.
+In the plot shown above we see how the training and the test error change according to different values of k. Obviously, the training error is always lower than the test error since in the first case we train and test the data on the same data set.
+However, looking at the data and at the graph we can say that a reasonably good data for k is 10. Indeed, with this value of k we have a model accuracy around the 77% moreover, we have also a low value for the false negative which is also a key factor since we are dealing with a disease.  
+
+### Now we repeat the same operations after having rescaled the predictors.
+Because the KNN classifier predict the class of a given set of observation by identifying the observations that are nearest to it, the scale of the variables matters. 
+Any variables that are on a large scale will have much larger effect on the distance between the observations, and hence on the KNN classifier, than variables that are on a small scale. 
+(Just to make it clearer let's imagine a data set where we have two predictors _salary_ and _age_. As far as KNN is concerned, a difference of 1000\$ in _salary_ is enormous compared to a variation of 50 years in _age_. Consequently, _salary_ will drive the KNN classification results, and _age_ will have almost no effect. This is contrary to the intuition that a salary difference of 1000\$ is quite small compared to an age difference of 50 years.)
+So, a good way to handle this problem is to standardize the data so that all variables are given a mean zero and standard deviation of one. Then all the variables will be on a comparable scale. To do so we use the already known function `scale()`.
+This being said, we do not have much information on our data set, we do not know what the predictors represent so we do not know if they use different scales. At a first look we could say yes because some variables have quite high values for example _C2_ while other have quite small numbers e.g. _C7_. Hence, we expect that there will be some differences between the un-scaled result and the scaled one. 
+```{r}
+x_trx <- train.x[1:8]
+x_tsx <- test.x[1:8]
+
+y_trx <-  train.x[,9]
+y_tsx <-  test.x[,9]
+knn_acc <-  c()
+errors_trx <-  errors_tsx <-  c()
+for(k in kvec) {
+  pred_trx <-  knn(x_trx, x_trx, y_trx , k = k, prob = T)
+  pred_tsx <-  knn(x_trx, x_tsx, y_trx, k = k, prob = T)
+  err_trx <-  calc_error_rate(pred_trx, y_trx)
+  err_tsx <-  calc_error_rate(pred_tsx, y_tsx)
+  errors_trx <-  append(errors_trx, err_trx)
+  errors_tsx <-  append(errors_tsx, err_tsx)
+  print(table(pred_tsx, test$disease))
+  knn_acc <-  append(knn_acc, mean(pred_tsx == y_tsx))
+}
+plot(1, type = 'n', xlim = c(0.01, 1), ylim = c(0,0.5), log = 'x', xlab= '1/K', ylab = 'Error Rate')
+lines(1/kvec, errors_trx, type = 'b', col = 'red')
+lines(1/kvec, errors_tsx, type = 'b', col='blue')
+legend('bottomleft', legend = c('Training Error', 'Test Error'), col=c('red','blue'), lty = 1, cex = .64)
+mean(knn_acc)
+```
+  
+As we expected, after having standardized the training set and the test set we have different results. As before, we have to choose the right value for k, to do so we look again to the accuracy of the model. Looking at the data we notice that the accuracy of the model reaches its maximum with two different values of k: k = 8 and k = 50. However, looking at the confusion matrix we could prefer the option with k = 50 because in this case the number of false negative is lower than in the case of k = 8 and as mentioned before since we are dealing with a disease we think that it is preferable having a test which is more able to detect the presence of the disease instead of its absence. 
+  
+# Exercise 4  
+## Explore the use of LDA, QDA, and Naive Bayes to predict disease onset using all the predictors. For each method:  
+## * Train the model on the training data  
+## * Apply the fitted model to the test set; compute the confusion matrix and prediction accuracy  
+Now we will perform __LDA__ on the training set using the `lda()` function, which is part of the MASS library. The syntax for the `lda()` function is identical to the one of the `lm()`.  
+
+__LDA__
+```{r}
+if (!require(MASS)) {
+    install.packages(MASS)
+    library(MASS)
+}
+
+lda.fit <-  lda(disease~., data = train)
+lda.fit
+plot(lda.fit)
+```
+. The _LDA_  provides the group means; these are the average of each predictor within each class, and are used by _LDA_ as estimates of μk. The coefficients of linear discriminant output provides the linear combination of the predictors that are used to form the LDA decision rule.  
+The `predict()` function applied to the model and the test set returns a list with three elements. The first element _class_, contains LDA's prediction about the presence of the disease. The second element _posterior_, is a matrix whose kth column contains the posterior probability that the corresponding observation belongs to the kth class, computed from $Pr(Y=k|X=x)= \frac{\displaystyle \pi f_k(x)} {\sum_{i=1}^{10} \pi_lf_l(x)}$. Finally, _x_ contains the linear discriminant described earlier. 
+```{r}
+lda.pred <- predict(lda.fit, test)
+names(lda.pred)
+lda.class <-  lda.pred$class
+table(lda.class,test$disease)
+mean(lda.class == test$disease)
+lda.acc <- mean(lda.class == test$disease)
+sum(lda.pred$posterior[,2] >= .5)
+sum(lda.pred$posterior[,2] < .5)
+
+```
+Applying a 50% threshold to the posterior probabilities allows us to recreate the predictions contained in _lda.class_.  
+Looking at the results we notice that LDA and logistic regression predictions are almost identical. But at a first glance, we might prefer the logistic regression because the accuracy is slightly higher and the number of false negative is lower in the logistic regression and this could be useful since we are dealing with a disease and it is reasonable to believe that false negative individuals could be a danger. 
+## Now we will re compute the same operation with the standardized training set and test set. 
+```{r}
+lda.fitx <-  lda(disease~., data = train.x)
+lda.fitx
+plot(lda.fitx)
+lda.predx <- predict(lda.fitx, test.x)
+names(lda.predx)
+lda.classx <-  lda.predx$class
+table(lda.classx,test.x$disease)
+mean(lda.classx == test.x$disease)
+
+sum(lda.predx$posterior[,2] >= .5)
+sum(lda.predx$posterior[,2] < .5)
+```
+As we can see from the results there is no change when we standardize the training and the test set with the LDA.  
+
+__QDA__  
+
+We will now fit a _QDA_ model to our training set. For what concerns the syntax of this function we know that it is pretty identical to the one of the `lda()` function. 
+```{r}
+qda.fit <-  qda(disease~., data = train)
+qda.fit
+```
+The output contains the group means. But it does not contain the coefficients of the linear discriminants, because the _QDA_ classifier involves a quadratic rather than a linear function  of predictors. The `predict()` function works in exactly the same fashion as for _LDA_.
+```{r}
+qda.pred <-  predict(qda.fit, test)
+qda.class <-  qda.pred$class
+table(qda.class, test$disease)
+mean(qda.class == test$disease)
+qda.acc <-  mean(qda.class == test$disease)
+```
+The _QDA_ predictions are slightly more accurate than the ones of the _LDA_. The accuracy of the model is almost identical to the one of the logistic regression. However, according to the reasoning used for the selection of k in the KNN, the data suggest that we should prefer the QDA since the number of false negative is lower with the _QDA_.  
+
+## Now we will re compute the same operation with the standardized training set and test set.
+```{r}
+qda.fitx <-  qda(disease~., data = train.x)
+qda.fitx
+
+qda.predx <- predict(qda.fitx, test.x)
+names(qda.predx)
+qda.classx <-  qda.predx$class
+table(qda.classx,test.x$disease)
+mean(qda.classx == test.x$disease)
+
+sum(qda.predx$posterior[,2] >= .5)
+sum(qda.predx$posterior[,2] < .5)
+```
+As for the LDA, we observe no change in the results when we apply the `qda()` function on a standardized data set.   
+  
+__Naive Bayes__  
+
+Naive Bayes (NB) is highly recommended when we our input data is composed only by categorical variables. However, NB can handle continuous variables too at the price of assuming they are normally distributed ('Gaussian naive Bayes):  the probabilities of likelihood are computed using the Gaussian probability density function. Another way to deal with continuous variables is to discretize them into discrete values beforehand (for example, re-coding the values into quartiles). 
+ In R, the Naive Bayes (NB) classifier is included in the package `e1071`: if it is not already there, we will install it.
+ To fit a NB model and to compute the predictions the syntax is almost the same that we used for the other parametric models.
+```{r}
+if(!require("e1071")) {
+    install.packages("e1071")
+    library(e1071)
+}
+
+nb.fit <-  naiveBayes(disease ~. ,data = train)
+nb.fit
+nb.preds <- predict(nb.fit, test)
+table(nb.preds, test$disease)
+sum(nb.preds==test$disease)/nrow(test)
+prop.table(table(nb.preds, test$disease)[1,])
+prop.table(table(nb.preds, test$disease)[2,])
+nb.probs <-  predict(nb.fit, test, type = 'raw')
+head(nb.probs)
+nb_acc <-  c(sum(nb.preds == test$disease)/nrow(test))
+print(nb_acc)
+```
+The _Naive Bayes_ fitted object contains the priori probabilities of being infected and the means and standard deviations of the predictors (If the predictors were categorical variables the nb would have shown the conditional probabilities.)
+Looking at the result of the prediction did on the basis of the nb model we can say that the result is quite satisfying, we have an accuracy of the 77% similar to the obtained with the lda's model. 
+However, we believe that the nb is not the best option in this case due to its assumption of independence between the different predictors because it is reasonable to think that there is a certain level of correlation between medical predictors.
+## Now we will re compute the same operation with the standardized training set and test set.
+```{r}
+nb.fitx <-  naiveBayes(disease ~. ,data = train.x)
+nb.fitx
+nb.predsx <- predict(nb.fitx, test.x)
+table(nb.predsx, test.x$disease)
+sum(nb.predsx==test.x$disease)/nrow(test.x)
+prop.table(table(nb.predsx, test.x$disease)[1,])
+prop.table(table(nb.predsx, test.x$disease)[2,])
+nb.probsx <-  predict(nb.fitx, test.x, type = 'raw')
+head(nb.probsx)
+```
+As we can see from the results we notice that there is no substantial difference after having standardized the training set and the test set.
+
+# Exercise 5  
+# Compare all the methods considered so far on the test data (logistic regression, k-nn, LDA, QDA, NB).  
+
+```{r}
+Models <-  c('Logistic regression','LDA','QDA','KNN','Naive Bayes')
+Accuracy <-  c(glm.acc, lda.acc, qda.acc, mean(knn_acc), nb_acc)
+recap_table <-  cbind(Models,Accuracy)
+print(recap_table)
+```
+
+
+In our analysis we have considered five different classification approaches: Logistic regression; Linear discriminant analysis, Quadratic discriminant analysis, K-nearest neighbor and the Naive Bayes.  
+The logistic regression and the LDA methods are closely connected because they both produce linear decision boundaries; the only difference between the two approaches lies in the fact the parameters are estimated using the maximum likelihood while in the LDA they are computed using the estimated mean and variance from a normal distribution.
+Since LDA and logistic regression differ only in their fitting procedures the fact that we got similar results do not surprise us. However, we could also do the following observation: since LDA assumes that the observation are drawn from a Gaussian distribution with a common covariance matrix in each class and we have noticed in our first inspection of the data set that these assumptions do not hold for all the predictors  so, we could prefer the logistic regression.
+Moving to the KNN we recall that this model completely differs from the other since it is a non-parametric approach. Hence, no assumptions are made about the shape of the decision boundary. Therefore, we expect this approach to dominate the LDA and logistic regression when the decision boundary is highly non linear. On the other hand, KNN does not tell us which predictors are important; we do not get a table of coefficients. Moreover, regarding the KNN we should prefer the prediction made on the standardized data sets because scaling the data is useful to avoid biases caused by the different scale of the numerical variables. 
+The QDA is a compromise between the non-parametric KNN method and the linear LDA and logistic regression approaches. Since QDA assumes a quadratic decision boundary, it can accurately model a wider range of problems than can be a linear methods. Though not as flexible  KNN, QDA can perform better in the presence of a limited number of training observation, as in our case, because it does make some assumption about the form of the decision boundary. 
+Finally, we have the Naive Bayes which is a classifier  based on the application of the Bayes'theorem with the strong (naive) independence assumption between the features. 
+The Bayes classifier requires the knowledge of the priori probabilities and the condition relative to the problem; these information are typically unknown but can be easily estimated. If these estimates of the probabilities are reliable the Bayes classifier is generally good. However, since we are dealing with medical variables it seems reasonable to think that the assumption of independence is not supported (We are not expert of medicine but typically some variables are highly correlated in this field such as the blood pressure and the weight or the percentage of glucose in the blood and again the weight). To conclude, we have to say that there is not a clear right answer to determine which is the absolute best model. Indeed, we have to face a trade off between the accuracy level and the interpretability of the results. However, our intuition will lead us to choose the QDA as the best model among the others due to the higher level of accuracy and its property of being a sort of compromise between all the other methods.  
+
+# Draw the ROC curve, combining all of the ROC curves in a single plot. Compute also the AUC for each method. Discuss whether there is any method clearly outperforming the rest.  
+
+Now the next task is to plot the ROC curve and to compute the area under the curve.  
+The _ROC curve_ is a popular graphic for simultaneously displaying the two types of errors for all the possible threshold. The overall performance of a classifier, summarized over all the possible thresholds, is given by the _area under the (ROC) curve_ (AUC). An ideal ROC curve will hug the top left corner, so the larger the AUC the better the classifier.  
+ROC curves are useful to compare different classifiers, since they can take into account both possible classification error (FP and FN) for every possible threshold  
+```{r}
+library(ROCR)
+
+predrglm <-  ROCR::prediction(glm.probs, test$disease)
+perfglm <-  ROCR::performance(predrglm, "tpr", "fpr")
+plot(perfglm, col = "indianred2", lwd = 2)
+auc.glm <-  ROCR::performance(predrglm, measure = "auc", main = "ROC Curve")
+
+
+predrlda <-  ROCR::prediction(lda.pred$posterior[,2], test$disease)
+perflda <-  ROCR::performance(predrlda, "tpr", "fpr")
+plot(perflda, col = "springgreen3", lwd = 2, add = T)
+auc.lda <-  ROCR::performance(predrlda, measure = "auc")
+
+
+predrqda <-  ROCR::prediction(qda.pred$posterior[,2], test$disease)
+perfqda <-  ROCR::performance(predrqda, "tpr", "fpr")
+plot(perfqda, col = "lightblue", lwd = 2, add = T)
+auc.qda <-  ROCR::performance(predrqda, measure = "auc")
+
+
+predrnb <-  ROCR::prediction(nb.probs[,2], test$disease)
+perfnb <-  ROCR::performance(predrnb, "tpr", "fpr")
+plot(perfnb, col = "orange", lwd = 2, add = T)
+auc.nb <-  ROCR::performance(predrnb, measure = "auc")
+
+# Since there is no predict for KNN method, I will have to extract the probability of prediction in the KNN testing with prob = True, otherwise we will get the predicted classes ( the proportions are needed)
+pred_ts_prob <- attr(pred_ts, "prob")
+pred_ts_prob[pred_ts == "no"] <-  1 - pred_ts_prob[pred_ts == "no"] 
+# KNN outputs the posterior probability of the winning class, we need to re-scale it. 
+predrknn <-  ROCR::prediction(pred_ts_prob, test$disease)
+perfknn <-  ROCR::performance(predrknn, "tpr", "fpr")
+plot(perfknn, col = "hotpink", lwd = 2, add = T)
+auc.knn <-  ROCR::performance(predrknn, measure = "auc")
+abline(0,1, col = "grey", lwd = 3, lty = 2)
+legend('bottomright', legend = c('GLM','LDA', 'QDA','NB', 'K-NN'), col=c('indianred2','springgreen3','lightblue','orange','hotpink'), lty = 1, cex = .64)
+
+auc_table <-  data.frame(Glm = auc.glm@y.values[1], Lda = auc.lda@y.values[1], Qda = auc.qda@y.values[1], NB = auc.nb@y.values[1], Knn = auc.knn@y.values[1])
+auc_table
+max_auc <-  max(auc_table)
+min_auc <- min(auc_table)
+```
+```{r}
+auc_vector <-  c(auc.glm@y.values[1], auc.lda@y.values[1], auc.qda@y.values[1],auc.knn@y.values[1], auc.nb@y.values[1])
+auc_summ_table <-  cbind(Models, auc_vector)
+print(auc_summ_table)
+```
+
+Analyzing the results we see that the model with the highest value for the AUC is the QDA. However, the difference is really small indeed, looking at the graph we see how the different ROC curves are all pretty close one with each other. The model with the lowest ROC curve and consequently with the smallest AUC is the KNN.
+
+# Reflect on what is not ideal on this comparative analysis, which could bias the results in favor of one of the methods (which one?)? Do you see this on the results?
+As mentioned before, it looks difficult to determine which is the best methods also when we compare the the different ROC curves and the different areas under the curves.
+Indeed, we can easily notice that all the curves overlaps over each other. This create a bias in our analysis and makes difficult to clearly state which model we should prefer also because the difference between the values of the AUC is pretty small. It is also difficult to assess which model could be favored due to a bias. A reasonable hypothesis is that the naive Bayes is favored because comparing both the accuracy and the AUC we notice that the NB has a much higher value of AUC compared to the LDA and the logistic regression while their accuracy is almost identical. 
+Our final thought is that a linear model such as the logistic regression could lead us to a model which is easier to interpret but since the classes are not well separated the assumption of having a linear decision boundary may not hold so once again our preferences go in favor to the QDA.
+
+# Exercise 6  
+
+## Since the predictors are continuous, there could be also the option of including polynomial terms. In the context of logistic regression.  
+
+## Consider only the predictor C2 and fit a model which includes higher orders of this variable in the model;  
+
+##  Explore different degrees and check the performance on test data to reach a conclusion on the optimal degree;  
+
+Since the predictors are continuous we could include polynomial terms in the context of logistic regression.  
+The introduction of polynomial terms is helpful in the case the true relationship between the response and the predictors is non linear. 
+In this case we also want to investigate the performance of the polynomial regression with different degrees. 
+To do so we simply create a for cycle where we will perform a logistic regression with the addition of polynomial terms up to the twelfth degree and then we simply make the predictions as before. 
+```{r}
+my_seq <-  c(seq(1:12))
+v_test <-  c()
+v_train <-  c()
+poly_acc_train <-  c()
+poly_acc_test <- c()
+poly_err_train <-  c()
+poly_err_test <- c()
+true_neg <-  c()
+true_pos <-  c()
+for (i in my_seq){
+  model <-  glm(disease ~ poly(C2,i), data = train, family = 'binomial')
+  print(summary(model))
+  poly_prob_test <-  predict(model, test, type = 'response')
+  poly_pred_test <-  rep('no', length(test))
+  poly_pred_test <-  ifelse(poly_prob_test > 0.5, 'yes', 'no')
+  poly_prob_train <-  predict(model, train, type = 'response')
+  poly_pred_train <- rep('no', length(train))
+  poly_pred_train <- ifelse(poly_prob_train > 0.5, 'yes', 'no')
+  
+  # confusion matrix
+  table(poly_pred_test, test$disease)
+  # TN & TP 
+  true_pos <-  c(true_pos, table(poly_pred_test, test$disease)[2,2]/sum(table(poly_pred_test, test$disease)[,2]))
+  true_neg <-  c(true_neg, table(poly_pred_test, test$disease)[1,1]/sum(table(poly_pred_test, test$disease)[,1]))
+  # accuracy 
+  poly_acc_test <-  append(poly_acc_test, mean(poly_pred_test==test$disease))
+  poly_err_test <-  append(poly_err_test, mean(poly_pred_test!=test$disease))
+  poly_acc_train <-  append(poly_acc_train, mean(poly_pred_train==train$disease))
+  print(mean(poly_pred_train ==  train$disease))
+   poly_err_train <-  append(poly_err_train, mean(poly_pred_train!=train$disease))
+  print(mean(poly_pred_train ==  train$disease))
+}
+```
+Now we simply want to plot the results just obtained: so we decide to create three different graphs where we plot the true positive rate and the true negative rate; the test and train accuracy; test and train error.
+```{r}
+# creating a blank plot to fill with poly lines afterwards
+plot(my_seq, type = 'n', xlab = 'Degree', ylab = 'Rates', ylim = c(0.4,0.9), xlim = c(1,12), main = 'True negative vs True positive')
+# add lines for MSE on train and test lines 
+lines(my_seq, true_pos, col = 'indianred2', lwd = 3, type = 'b')
+lines( my_seq, true_neg, col = 'springgreen2', lwd = 3, type = 'b' )
+legend('bottomleft', legend = c('True Neg', 'True Pos'), col = c('indianred2', 'springgreen2'), lty = 1.5, cex = .80)
+
+```
+
+
+
+```{r}
+# creating a blank plot to fill with poly lines afterwards
+plot(my_seq, type = 'n', xlab = 'Degree', ylab = 'Rates', ylim = c(0.7,0.8), main = 'Test accuracy vs Train accuracy')
+lines(my_seq, poly_acc_train, col = 'indianred2', lwd = 3, type = 'b')
+lines( my_seq, poly_acc_test, col = 'springgreen2', lwd = 3, type = 'b' )
+legend('bottomleft', legend = c('Test Accuracy', 'Train Accuracy'), col = c('indianred2', 'springgreen2'), lty = 1.5, cex = .80)
+
+```
+```{r}
+# creating a blank plot to fill with poly lines afterwards
+plot(my_seq, type = 'n', xlab = 'Degree', ylab = 'Rates', ylim = c(0.15,0.3), main = 'Test error vs train error')
+lines(my_seq, poly_err_train, col = 'indianred2', lwd = 3, type = 'b')
+lines( my_seq, poly_err_test, col = 'springgreen2', lwd = 3, type = 'b' )
+legend('topleft', legend = c('Test Error', 'Train Error'), col = c('indianred2', 'springgreen2'), lty = 1.5, cex = .80)
+
+```
+The first thing we can spot is that there is not a significant difference between the model created considering all the predictors and the one created considering only _C2_ with the polynomial terms.
+According to the results of the analysis and their respective plots it seems reasonable to think that in this case the best option could be consider the polynomial of degree one since there is not a big difference in the accuracy-error rate and the true positive-true negative rate between the different degree of the polynomials. Moreover, a regression model with a lower degree is always easier to interpret compared to the ones with an higher degree.  
+
+## Write the formula of your optimal model.  
+
+$log(p(1|x)/(1-p(1|x))) = \ β^t·x = β0+β1·x1 =  -0.8816+21.1750·C2$
